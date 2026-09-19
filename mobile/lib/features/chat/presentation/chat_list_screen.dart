@@ -14,9 +14,12 @@ class ChatListScreen extends StatefulWidget {
 
 class _ChatListScreenState extends State<ChatListScreen> {
   String filter = 'All';
+  String query = '';
+  final searchController = TextEditingController();
+  final searchFocus = FocusNode();
   final chats = const [
-    ChatSummary(id: 'project-x', name: 'Project X Team', preview: 'Rohan: Please check the latest design and share your feedback.', time: '9:41 AM', unread: 3, group: true),
-    ChatSummary(id: 'ananya', name: 'Ananya Sharma', preview: 'Hey! Are we still on for the meeting today?', time: '9:30 AM', unread: 1, online: true, color: 0xFF282D38),
+    ChatSummary(id: 'project-x', name: 'Project X Team', preview: 'Rohan: Please check the latest design and share your feedback.', time: '9:41 AM', unread: 3, group: true, favorite: true),
+    ChatSummary(id: 'ananya', name: 'Ananya Sharma', preview: 'Hey! Are we still on for the meeting today?', time: '9:30 AM', unread: 1, online: true, favorite: true, color: 0xFF282D38),
     ChatSummary(id: 'vikram', name: 'Vikram Mehta', preview: 'Got it! Thanks for the update.', time: 'Yesterday', online: true, color: 0xFF37474F),
     ChatSummary(id: 'weekend', name: 'Weekend Plans', preview: 'Riya: How about a trip this weekend?', time: 'Yesterday', unread: 5, group: true, color: 0xFFE16AC5),
     ChatSummary(id: 'neha', name: 'Neha Verma', preview: 'Can you send me the documents?', time: 'Mon', unread: 2, online: true, color: 0xFF5F6C3A),
@@ -25,20 +28,44 @@ class _ChatListScreenState extends State<ChatListScreen> {
   ];
 
   @override
+  void dispose() {
+    searchController.dispose();
+    searchFocus.dispose();
+    super.dispose();
+  }
+
+  List<ChatSummary> get filteredChats {
+    final normalizedQuery = query.trim().toLowerCase();
+    return chats.where((chat) {
+      final matchesQuery = normalizedQuery.isEmpty || chat.name.toLowerCase().contains(normalizedQuery) || chat.preview.toLowerCase().contains(normalizedQuery);
+      final matchesFilter = switch (filter) {
+        'Groups' => chat.group,
+        'Direct' => !chat.group,
+        'Unread' => chat.unread > 0,
+        'Favorites' => chat.favorite,
+        _ => true,
+      };
+      return matchesQuery && matchesFilter;
+    }).toList();
+  }
+
+  @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: Colors.white,
         body: SafeArea(child: Column(children: [
           Padding(padding: const EdgeInsets.fromLTRB(19, 18, 19, 12), child: Row(children: [
             const Text('Chats', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: _ink)),
             const Spacer(),
-            IconButton(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Use the search field below'))), icon: const Icon(Icons.search, color: _purple)),
+            IconButton(onPressed: () => searchFocus.requestFocus(), icon: const Icon(Icons.search, color: _purple)),
             IconButton(onPressed: () => context.go('/contacts/new'), icon: const Icon(Icons.edit_outlined, color: _purple)),
           ])),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 19), child: TextField(decoration: InputDecoration(prefixIcon: const Icon(Icons.search, size: 20), hintText: 'Search chats, people or groups...', filled: true, fillColor: const Color(0xFFF7F7FA), border: OutlineInputBorder(borderSide: BorderSide.none, borderRadius: BorderRadius.circular(13))))),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 19), child: TextField(controller: searchController, focusNode: searchFocus, onChanged: (value) => setState(() => query = value), style: const TextStyle(color: _ink), decoration: InputDecoration(prefixIcon: const Icon(Icons.search, size: 20), suffixIcon: query.isEmpty ? null : IconButton(onPressed: () { searchController.clear(); setState(() => query = ''); }, icon: const Icon(Icons.close, size: 19)), hintText: 'Search chats, people or groups...', filled: true, fillColor: const Color(0xFFF7F7FA), border: OutlineInputBorder(borderSide: BorderSide.none, borderRadius: BorderRadius.circular(13))))),
           const SizedBox(height: 20),
           SizedBox(height: 35, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 19), children: ['All', 'Groups', 'Direct', 'Unread', 'Favorites'].map((item) => Padding(padding: const EdgeInsets.only(right: 12), child: ChoiceChip(label: Text(item), selected: filter == item, onSelected: (_) => setState(() => filter = item), selectedColor: const Color(0xFFF0EBFF), labelStyle: TextStyle(color: filter == item ? _purple : _muted), side: const BorderSide(color: Color(0xFFE8E8F0))))).toList())),
           const SizedBox(height: 8),
-          Expanded(child: ListView.builder(itemCount: chats.length, itemBuilder: (_, index) => _ChatTile(chat: chats[index], onTap: () => context.go('/chat/${chats[index].id}')))),
+          Expanded(child: filteredChats.isEmpty
+              ? const Center(child: Text('No matching chats found', style: TextStyle(color: _muted)))
+              : ListView.builder(itemCount: filteredChats.length, itemBuilder: (_, index) { final chat = filteredChats[index]; return _ChatTile(chat: chat, onTap: () => context.go('/chat/${chat.id}')); })),
         ])),
         bottomNavigationBar: const _BottomNav(),
       );

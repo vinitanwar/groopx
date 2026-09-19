@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'auth_components.dart';
 import 'phone_screen.dart';
 import '../data/auth_api.dart';
+import '../data/auth_session.dart';
 
 class OtpScreen extends StatefulWidget {
   const OtpScreen({super.key, required this.mode, required this.phone});
@@ -59,7 +60,8 @@ class _OtpScreenState extends State<OtpScreen> {
     if (code.length != 6) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter the complete 6-digit OTP'))); return; }
     setState(() => loading = true);
     try {
-      await AuthApi.instance.verifyOtp(widget.phone, code);
+      final response = await AuthApi.instance.verifyOtp(widget.phone, code);
+      await AuthSession.instance.saveAuthentication(response, profileComplete: widget.mode == AuthMode.signIn);
       if (mounted) context.go(widget.mode == AuthMode.signUp ? '/profile-setup' : '/chats');
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid or expired OTP')));

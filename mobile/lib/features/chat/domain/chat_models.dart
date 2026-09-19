@@ -1,5 +1,5 @@
 class ChatSummary {
-  const ChatSummary({required this.id, required this.name, required this.preview, required this.time, this.unread = 0, this.group = false, this.online = false, this.color = 0xFF6633FF});
+  const ChatSummary({required this.id, required this.name, required this.preview, required this.time, this.unread = 0, this.group = false, this.online = false, this.favorite = false, this.color = 0xFF6633FF});
   final String id;
   final String name;
   final String preview;
@@ -7,6 +7,7 @@ class ChatSummary {
   final int unread;
   final bool group;
   final bool online;
+  final bool favorite;
   final int color;
 }
 
@@ -18,4 +19,3 @@ class ChatMessage {
   final bool mine;
   final bool read;
 }
-

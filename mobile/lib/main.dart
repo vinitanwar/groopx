@@ -12,11 +12,34 @@ import 'package:groopx/features/groups/presentation/group_info_screen.dart';
 import 'package:groopx/features/contacts/presentation/add_contact_screen.dart';
 import 'package:groopx/features/reminders/presentation/reminders_screen.dart';
 import 'package:groopx/features/calls/presentation/call_screen.dart';
+import 'package:groopx/features/auth/data/auth_session.dart';
 
-void main() => runApp(const GroopXApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AuthSession.instance.initialize();
+  runApp(const GroopXApp());
+}
 
 final _router = GoRouter(
   initialLocation: '/',
+  refreshListenable: AuthSession.instance,
+  redirect: (_, state) {
+    final session = AuthSession.instance;
+    final location = state.matchedLocation;
+    final isAuthScreen = location == '/' ||
+        location == '/sign-in' ||
+        location == '/sign-up' ||
+        location.startsWith('/otp/');
+    if (!session.isAuthenticated && !isAuthScreen) return '/';
+    if (session.isAuthenticated && isAuthScreen) {
+      return session.profileComplete ? '/chats' : '/profile-setup';
+    }
+    if (session.isAuthenticated &&
+        !session.profileComplete &&
+        location != '/profile-setup') return '/profile-setup';
+    if (session.profileComplete && location == '/profile-setup') return '/chats';
+    return null;
+  },
   routes: [
     GoRoute(path: '/', builder: (_, __) => const WelcomeScreen()),
     GoRoute(path: '/sign-in', builder: (_, __) => const PhoneScreen(mode: AuthMode.signIn)),
@@ -46,7 +69,7 @@ class GroopXApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp.router(
         title: 'GroopX',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.dark,
+        theme: AppTheme.light,
         routerConfig: _router,
       );
 }

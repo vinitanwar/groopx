@@ -12,6 +12,31 @@ abstract final class AppColors {
 }
 
 abstract final class AppTheme {
+  static ThemeData get light {
+    final base = ThemeData.light(useMaterial3: true);
+    return base.copyWith(
+      scaffoldBackgroundColor: Colors.white,
+      colorScheme: ColorScheme.fromSeed(seedColor: AppColors.purple),
+      textTheme: GoogleFonts.interTextTheme(base.textTheme).apply(
+        bodyColor: const Color(0xFF080D28),
+        displayColor: const Color(0xFF080D28),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        labelStyle: const TextStyle(color: Color(0xFF4B5368)),
+        floatingLabelStyle: const TextStyle(color: AppColors.violet),
+        hintStyle: const TextStyle(color: Color(0xFF8A91A2)),
+        helperStyle: const TextStyle(color: Color(0xFF687086)),
+        prefixIconColor: AppColors.violet,
+        suffixIconColor: const Color(0xFF080D28),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      textSelectionTheme: const TextSelectionThemeData(
+        cursorColor: AppColors.violet,
+        selectionColor: Color(0x336331E8),
+      ),
+    );
+  }
+
   static ThemeData get dark => ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: AppColors.background,
@@ -23,4 +48,3 @@ abstract final class AppTheme {
         useMaterial3: true,
       );
 }
-

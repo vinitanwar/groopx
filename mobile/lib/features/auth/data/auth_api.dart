@@ -16,5 +16,13 @@ class AuthApi {
     final response = await _dio.post<Map<String, dynamic>>('/auth/verify-otp', data: {'phone': phone, 'code': code});
     return response.data ?? const {};
   }
-}
 
+  Future<void> updateProfile({required String accessToken, required String fullName, required String dateOfBirth, required String username, required String gender}) async {
+    await _dio.put('/users/me/profile', data: {
+      'full_name': fullName,
+      'date_of_birth': dateOfBirth,
+      'username': username,
+      'gender': gender,
+    }, options: Options(headers: {'Authorization': 'Bearer $accessToken'}));
+  }
+}
