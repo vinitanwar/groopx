@@ -57,7 +57,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
             const Text('Chats', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: _ink)),
             const Spacer(),
             IconButton(onPressed: () => searchFocus.requestFocus(), icon: const Icon(Icons.search, color: _purple)),
-            IconButton(onPressed: () => context.go('/contacts/new'), icon: const Icon(Icons.edit_outlined, color: _purple)),
+            IconButton(onPressed: () => context.push('/contacts/new'), icon: const Icon(Icons.edit_outlined, color: _purple)),
           ])),
           Padding(padding: const EdgeInsets.symmetric(horizontal: 19), child: TextField(controller: searchController, focusNode: searchFocus, onChanged: (value) => setState(() => query = value), style: const TextStyle(color: _ink), decoration: InputDecoration(prefixIcon: const Icon(Icons.search, size: 20), suffixIcon: query.isEmpty ? null : IconButton(onPressed: () { searchController.clear(); setState(() => query = ''); }, icon: const Icon(Icons.close, size: 19)), hintText: 'Search chats, people or groups...', filled: true, fillColor: const Color(0xFFF7F7FA), border: OutlineInputBorder(borderSide: BorderSide.none, borderRadius: BorderRadius.circular(13))))),
           const SizedBox(height: 20),
@@ -65,7 +65,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           const SizedBox(height: 8),
           Expanded(child: filteredChats.isEmpty
               ? const Center(child: Text('No matching chats found', style: TextStyle(color: _muted)))
-              : ListView.builder(itemCount: filteredChats.length, itemBuilder: (_, index) { final chat = filteredChats[index]; return _ChatTile(chat: chat, onTap: () => context.go('/chat/${chat.id}')); })),
+              : ListView.builder(itemCount: filteredChats.length, itemBuilder: (_, index) { final chat = filteredChats[index]; return _ChatTile(chat: chat, onTap: () => context.push('/chat/${chat.id}')); })),
         ])),
         bottomNavigationBar: const _BottomNav(),
       );
@@ -96,7 +96,7 @@ class _BottomNav extends StatelessWidget {
   const _BottomNav();
   @override
   Widget build(BuildContext context) => SafeArea(child: Container(height: 66, margin: const EdgeInsets.fromLTRB(14, 0, 14, 9), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30), boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 18)]), child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-    const _NavItem(Icons.chat_bubble, 'Chat', true), _NavItem(Icons.groups_outlined, 'Group', false, onTap: () => context.go('/groups/new')), _NavItem(Icons.add_circle_outline, 'New Chat', false, onTap: () => context.go('/contacts/new')), _NavItem(Icons.calendar_month_outlined, 'Reminder/Meeting', false, onTap: () => context.go('/reminders')), const _NavItem(Icons.person_outline, 'Profile', false),
+    const _NavItem(Icons.chat_bubble, 'Chat', true), _NavItem(Icons.groups_outlined, 'Group', false, onTap: () => context.push('/groups/new')), _NavItem(Icons.add_circle_outline, 'New Chat', false, onTap: () => context.push('/contacts/new')), _NavItem(Icons.calendar_month_outlined, 'Reminder/Meeting', false, onTap: () => context.push('/reminders')), _NavItem(Icons.person_outline, 'Profile', false, onTap: () => context.push('/profile')),
   ])));
 }
 

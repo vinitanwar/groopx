@@ -13,6 +13,7 @@ import 'package:groopx/features/contacts/presentation/add_contact_screen.dart';
 import 'package:groopx/features/reminders/presentation/reminders_screen.dart';
 import 'package:groopx/features/calls/presentation/call_screen.dart';
 import 'package:groopx/features/auth/data/auth_session.dart';
+import 'package:groopx/features/auth/presentation/profile_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,6 +53,7 @@ final _router = GoRouter(
       ),
     ),
     GoRoute(path: '/profile-setup', builder: (_, __) => const ProfileSetupScreen()),
+    GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
     GoRoute(path: '/chats', builder: (_, __) => const ChatListScreen()),
     GoRoute(path: '/chat/:id', builder: (_, state) => ConversationScreen(conversationId: state.pathParameters['id']!)),
     GoRoute(path: '/groups/new', builder: (_, __) => const CreateGroupScreen()),

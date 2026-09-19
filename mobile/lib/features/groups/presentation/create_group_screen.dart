@@ -42,7 +42,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
   InputDecoration _input(String hint) => InputDecoration(hintText: hint, counterStyle: const TextStyle(fontSize: 10), enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xFFDDE0E8)), borderRadius: BorderRadius.circular(8)), focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: authPurple), borderRadius: BorderRadius.circular(8)));
   Widget _label(String value) => Padding(padding: const EdgeInsets.only(top: 8, bottom: 7), child: Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: authInk)));
-  void _create() { if (name.text.trim().isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a group name'))); return; } context.go('/groups/new-group'); }
+  void _create() { if (name.text.trim().isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a group name'))); return; } context.pushReplacement('/groups/new-group'); }
 }
 
 class _PrivacyTile extends StatelessWidget {
@@ -51,4 +51,3 @@ class _PrivacyTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => InkWell(onTap: onTap, child: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(border: Border.all(color: selected ? authPurple : const Color(0xFFE0E2E9)), borderRadius: BorderRadius.circular(8)), child: Row(children: [Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off, color: selected ? authPurple : authMuted), const SizedBox(width: 12), CircleAvatar(backgroundColor: const Color(0xFFF2EDFF), child: Icon(icon, color: authPurple)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w700)), Text(subtitle, style: const TextStyle(fontSize: 10, color: authMuted))]))])));
 }
-

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -27,9 +28,13 @@ func Register(router *gin.Engine) {
 	v1.POST("/auth/request-otp", requestOTP)
 	v1.POST("/auth/verify-otp", verifyOTP)
 	v1.PUT("/users/me/profile", requireBearer(), updateProfile)
+	v1.GET("/users/me/profile", requireBearer(), getProfile)
 	v1.GET("/ws", chatSocket)
 	v1.POST("/contacts", requireBearer(), createContact)
 	v1.POST("/groups", requireBearer(), createGroup)
+	v1.GET("/groups/:id/members", requireBearer(), listGroupMembers)
+	v1.PATCH("/groups/:id/members/:userId/display-name", requireBearer(), updateGroupDisplayName)
+	v1.POST("/conversations/direct", requireBearer(), createDirectConversation)
 	v1.POST("/conversations/:id/archive", requireBearer(), setArchive(true))
 	v1.DELETE("/conversations/:id/archive", requireBearer(), setArchive(false))
 	v1.DELETE("/conversations/:id", requireBearer(), deleteConversation)
@@ -90,9 +95,22 @@ func requireBearer() gin.HandlerFunc {
 }
 
 func updateProfile(c *gin.Context) {
-	var profile map[string]any
-	if err := c.ShouldBindJSON(&profile); err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": "invalid profile"}); return }
+	var profile struct {
+		FullName string `json:"full_name" binding:"required,min=2,max=120"`
+		Username string `json:"username" binding:"required,min=3,max=40"`
+		DateOfBirth string `json:"date_of_birth" binding:"required"`
+		Gender string `json:"gender" binding:"required,max=30"`
+		Bio string `json:"bio" binding:"max=280"`
+		AvatarURL string `json:"avatar_url"`
+	}
+	if err := c.ShouldBindJSON(&profile); err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": "invalid profile fields"}); return }
+	if !regexp.MustCompile(`^[a-zA-Z0-9_]+$`).MatchString(profile.Username) { c.JSON(http.StatusBadRequest, gin.H{"error": "username may contain letters, numbers and underscore only"}); return }
 	c.JSON(http.StatusOK, gin.H{"message": "profile updated", "profile": profile})
+}
+
+func getProfile(c *gin.Context) {
+	// Phone deliberately belongs only to the authenticated user's own response.
+	c.JSON(http.StatusOK, gin.H{"full_name": "", "username": "", "date_of_birth": "", "gender": "", "bio": "", "avatar_url": ""})
 }
 
 func createContact(c *gin.Context) {
@@ -110,6 +128,28 @@ func createGroup(c *gin.Context) {
 	}
 	if c.ShouldBindJSON(&input) != nil { c.JSON(http.StatusBadRequest, gin.H{"error": "invalid group"}); return }
 	c.JSON(http.StatusCreated, gin.H{"id": time.Now().UnixNano(), "name": input.Name, "privacy": input.Privacy, "members": len(input.MemberIDs)})
+}
+
+func listGroupMembers(c *gin.Context) {
+	// Do not add phone to this payload. Private groups expose identity by username
+	// and the optional admin-managed group display name only.
+	c.JSON(http.StatusOK, gin.H{"group_id": c.Param("id"), "members": []gin.H{}, "fields": []string{"user_id", "username", "display_name", "avatar_url", "role"}})
+}
+
+func updateGroupDisplayName(c *gin.Context) {
+	var input struct { DisplayName string `json:"display_name" binding:"required,min=1,max=50"` }
+	if c.ShouldBindJSON(&input) != nil { c.JSON(http.StatusBadRequest, gin.H{"error": "display_name must be 1-50 characters"}); return }
+	// Production persistence must additionally verify the authenticated user is
+	// an admin of c.Param("id") before this update.
+	if c.GetHeader("X-Group-Role") != "admin" { c.JSON(http.StatusForbidden, gin.H{"error": "group admin permission required"}); return }
+	c.JSON(http.StatusOK, gin.H{"group_id": c.Param("id"), "user_id": c.Param("userId"), "display_name": input.DisplayName})
+}
+
+func createDirectConversation(c *gin.Context) {
+	var input struct { UserID string `json:"user_id" binding:"required"`; DiscoverySource string `json:"discovery_source"` }
+	if c.ShouldBindJSON(&input) != nil { c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"}); return }
+	if input.DiscoverySource == "private_group" { c.JSON(http.StatusForbidden, gin.H{"error": "private group membership does not allow direct messaging"}); return }
+	c.JSON(http.StatusCreated, gin.H{"id": time.Now().UnixNano(), "kind": "direct", "user_id": input.UserID})
 }
 
 func setArchive(archived bool) gin.HandlerFunc {

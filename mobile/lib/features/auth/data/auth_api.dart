@@ -17,12 +17,14 @@ class AuthApi {
     return response.data ?? const {};
   }
 
-  Future<void> updateProfile({required String accessToken, required String fullName, required String dateOfBirth, required String username, required String gender}) async {
+  Future<void> updateProfile({required String accessToken, required String fullName, required String dateOfBirth, required String username, required String gender, String bio = '', String avatarUrl = ''}) async {
     await _dio.put('/users/me/profile', data: {
       'full_name': fullName,
       'date_of_birth': dateOfBirth,
       'username': username,
       'gender': gender,
+      'bio': bio,
+      'avatar_url': avatarUrl,
     }, options: Options(headers: {'Authorization': 'Bearer $accessToken'}));
   }
 }

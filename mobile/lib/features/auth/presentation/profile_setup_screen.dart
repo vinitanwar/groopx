@@ -94,7 +94,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     setState(() => _loading = true);
     try {
       await AuthApi.instance.updateProfile(accessToken: token, fullName: _fullName.text.trim(), dateOfBirth: _dateOfBirth.text, username: _username.text.trim(), gender: _gender!);
-      await AuthSession.instance.markProfileComplete();
+      await AuthSession.instance.saveProfile(fullName: _fullName.text.trim(), username: _username.text.trim(), dateOfBirth: _dateOfBirth.text, gender: _gender!);
       if (mounted) context.go('/chats');
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to save profile. Please try again.')));
