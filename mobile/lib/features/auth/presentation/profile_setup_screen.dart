@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../data/auth_api.dart';
-import '../data/auth_session.dart';
 import 'auth_components.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
@@ -11,95 +10,90 @@ class ProfileSetupScreen extends StatefulWidget {
 }
 
 class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _fullName = TextEditingController();
-  final _dateOfBirth = TextEditingController();
-  final _username = TextEditingController();
-  String? _gender;
-  bool _loading = false;
+  final fullName = TextEditingController();
+  final username = TextEditingController();
+  final dateOfBirth = TextEditingController();
+  String gender = '';
+  bool loading = false;
 
   @override
   void dispose() {
-    _fullName.dispose();
-    _dateOfBirth.dispose();
-    _username.dispose();
+    fullName.dispose();
+    username.dispose();
+    dateOfBirth.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => AuthPage(
-        child: Form(
-          key: _formKey,
-          child: Column(children: [
-            Row(children: [
-              const Expanded(child: Column(children: [CircleAvatar(radius: 17, backgroundColor: authPurple, child: Text('1', style: TextStyle(color: Colors.white))), SizedBox(height: 7), Text('Mobile Number', style: TextStyle(fontSize: 10, color: authPurple))])),
-              Container(height: 2, width: 110, color: authPurple),
-              const Expanded(child: Column(children: [CircleAvatar(radius: 17, backgroundColor: authPurple, child: Text('2', style: TextStyle(color: Colors.white))), SizedBox(height: 7), Text('Personal Info', style: TextStyle(fontSize: 10, color: authPurple))])),
-            ]),
-            const SizedBox(height: 35),
-            const GroopXBrand(compact: true),
-            const SizedBox(height: 35),
-            const Text('Tell us about you', style: TextStyle(fontSize: 23, fontWeight: FontWeight.w700, color: authInk)),
-            const SizedBox(height: 9),
-            const Text('Add your details to personalize\nyour GroopX experience.', textAlign: TextAlign.center, style: TextStyle(color: authMuted, height: 1.5)),
-            const SizedBox(height: 25),
-            _field(controller: _fullName, icon: Icons.person_outline, label: 'Full name', hint: 'Example: Vinod Kumar', validator: (value) => value == null || value.trim().length < 2 ? 'Enter your full name' : null),
-            const SizedBox(height: 14),
-            _field(controller: _dateOfBirth, icon: Icons.calendar_today_outlined, label: 'Date of birth', hint: 'DD/MM/YYYY', readOnly: true, onTap: _selectDate, validator: (value) => value == null || value.isEmpty ? 'Select your date of birth' : null),
-            const SizedBox(height: 14),
-            _field(controller: _username, icon: Icons.alternate_email, label: 'Username', hint: 'Example: vinod28', helper: 'Your unique GroopX ID (letters, numbers and underscore)', validator: (value) {
-              if (!RegExp(r'^[a-zA-Z0-9_]{3,20}$').hasMatch(value?.trim() ?? '')) return 'Use 3–20 letters, numbers or underscore';
-              return null;
-            }),
-            const SizedBox(height: 14),
-            DropdownButtonFormField<String>(
-              value: _gender,
-              style: const TextStyle(color: authInk, fontSize: 16),
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.people_outline, color: authPurple, size: 20), labelText: 'Gender', hintText: 'Select gender'),
-              items: const ['Male', 'Female', 'Other', 'Prefer not to say'].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
-              onChanged: (value) => setState(() => _gender = value),
-              validator: (value) => value == null ? 'Select a gender option' : null,
-            ),
-            const SizedBox(height: 24),
-            PurpleButton(label: _loading ? 'Saving…' : 'Continue', onPressed: _loading ? () {} : _submit),
-            const SizedBox(height: 25),
-            const SecurityNote('Your information is secure and will\nnever be shared.'),
-          ]),
-        ),
-      );
-
-  Widget _field({required TextEditingController controller, required IconData icon, required String label, required String hint, String? helper, bool readOnly = false, VoidCallback? onTap, String? Function(String?)? validator}) => TextFormField(
-        controller: controller,
-        readOnly: readOnly,
-        onTap: onTap,
-        style: const TextStyle(color: authInk, fontSize: 16),
-        cursorColor: authPurple,
-        decoration: InputDecoration(prefixIcon: Icon(icon, color: authPurple, size: 20), labelText: label, hintText: hint, helperText: helper),
-        validator: validator,
-      );
-
-  Future<void> _selectDate() async {
-    final now = DateTime.now();
-    final selected = await showDatePicker(context: context, initialDate: DateTime(now.year - 18), firstDate: DateTime(1900), lastDate: now);
-    if (selected != null) _dateOfBirth.text = '${selected.day.toString().padLeft(2, '0')}/${selected.month.toString().padLeft(2, '0')}/${selected.year}';
-  }
+    child: Column(children: [
+      Row(children: [
+        const Expanded(child: Column(children: [CircleAvatar(radius: 17, backgroundColor: authPurple, child: Text('1')), SizedBox(height: 7), Text('Mobile Number', style: TextStyle(fontSize: 10, color: authPurple))])),
+        Container(height: 2, width: 110, color: authPurple),
+        const Expanded(child: Column(children: [CircleAvatar(radius: 17, backgroundColor: authPurple, child: Text('2')), SizedBox(height: 7), Text('Personal Info', style: TextStyle(fontSize: 10, color: authPurple))])),
+      ]),
+      const SizedBox(height: 35),
+      const GroopXBrand(compact: true),
+      const SizedBox(height: 35),
+      const Text('Tell us about you', style: TextStyle(fontSize: 23, fontWeight: FontWeight.w700, color: authInk)),
+      const SizedBox(height: 9),
+      const Text('Add your details to personalize\nyour GroopX experience.', textAlign: TextAlign.center, style: TextStyle(color: authMuted, height: 1.5)),
+      const SizedBox(height: 25),
+      _ProfileField(controller: fullName, icon: Icons.person_outline, hint: 'Full Name'),
+      const SizedBox(height: 14),
+      _ProfileField(controller: dateOfBirth, icon: Icons.calendar_today_outlined, hint: 'Date of Birth (YYYY-MM-DD)'),
+      const SizedBox(height: 14),
+      _ProfileField(controller: username, icon: Icons.alternate_email, hint: 'Username', helper: 'This will be your unique ID'),
+      const SizedBox(height: 14),
+      DropdownButtonFormField<String>(
+        value: gender.isEmpty ? null : gender,
+        decoration: _decoration(Icons.people_outline, 'Gender'),
+        items: const ['Female', 'Male', 'Non-binary', 'Prefer not to say'].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
+        onChanged: (value) => setState(() => gender = value ?? ''),
+      ),
+      const SizedBox(height: 24),
+      PurpleButton(label: loading ? 'Saving…' : 'Continue', onPressed: loading ? () {} : _submit),
+      const SizedBox(height: 25),
+      const SecurityNote('Your information is secure and will\nnever be shared.'),
+    ]),
+  );
 
   Future<void> _submit() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    final token = AuthSession.instance.accessToken;
-    if (token == null) {
-      if (mounted) context.go('/sign-in');
+    if (fullName.text.trim().isEmpty || username.text.trim().length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter your name and a username of at least 3 characters')));
       return;
     }
-    setState(() => _loading = true);
+    setState(() => loading = true);
     try {
-      await AuthApi.instance.updateProfile(accessToken: token, fullName: _fullName.text.trim(), dateOfBirth: _dateOfBirth.text, username: _username.text.trim(), gender: _gender!);
-      await AuthSession.instance.saveProfile(fullName: _fullName.text.trim(), username: _username.text.trim(), dateOfBirth: _dateOfBirth.text, gender: _gender!);
-      if (mounted) context.go('/chats');
+      await AuthApi.instance.updateProfile(
+        fullName: fullName.text.trim(),
+        username: username.text.trim(),
+        dateOfBirth: dateOfBirth.text.trim(),
+        gender: gender,
+      );
+      final invite = await AuthSession.instance.takePendingInvite();
+      if (mounted) context.go(invite == null ? '/chats' : '/join/$invite');
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to save profile. Please try again.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile could not be saved. Check the username and date.')));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => loading = false);
     }
   }
 }
+
+class _ProfileField extends StatelessWidget {
+  const _ProfileField({required this.controller, required this.icon, required this.hint, this.helper});
+  final TextEditingController controller;
+  final IconData icon;
+  final String hint;
+  final String? helper;
+  @override
+  Widget build(BuildContext context) => TextField(controller: controller, decoration: _decoration(icon, hint).copyWith(helperText: helper));
+}
+
+InputDecoration _decoration(IconData icon, String hint) => InputDecoration(
+  prefixIcon: Icon(icon, color: authPurple, size: 20),
+  hintText: hint,
+  enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xFFD7DAE3)), borderRadius: BorderRadius.circular(10)),
+  focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: authPurple), borderRadius: BorderRadius.circular(10)),
+);

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#6d35f4">
+  <title>GroopX Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="admin-extra.css">
+</head>
+<body>
+  <section id="loginView" class="login-view">
+    <div class="login-orb orb-one"></div><div class="login-orb orb-two"></div>
+    <div class="login-card">
+      <div class="brand brand-login"><span class="brand-mark">G</span><span>Groop<span>X</span></span></div>
+      <p class="eyebrow">ADMIN CONTROL CENTER</p>
+      <h1>Welcome back</h1>
+      <p class="subtle">Manage your community safely and confidently.</p>
+      <form id="loginForm">
+        <label>Email address<input id="email" type="email" autocomplete="username" placeholder="Enter administrator email" required></label>
+        <label>Password<input id="password" type="password" autocomplete="current-password" placeholder="Enter your password" required></label>
+        <p id="loginError" class="form-error"></p>
+        <button class="primary-button" type="submit"><span>Sign in securely</span><span>→</span></button>
+      </form>
+      <p class="security-note">🔒 Protected administrator access</p>
+    </div>
+  </section>
+
+  <div id="appView" class="app hidden">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><span class="brand-mark">G</span><span>Groop<span>X</span></span></div>
+      <nav id="nav">
+        <button data-page="dashboard" class="active"><span>⌂</span>Overview</button>
+        <button data-page="users"><span>♙</span>Users</button>
+        <button data-page="groups"><span>♟</span>Groups</button>
+        <button data-page="conversations"><span>◌</span>Conversations</button>
+        <button data-page="reports"><span>⚑</span>Reports <b id="reportBadge" class="nav-badge hidden">0</b></button>
+        <button data-page="calls"><span>⌕</span>Calls</button>
+        <button data-page="announcements"><span>✦</span>Announcements</button>
+        <button data-page="system"><span>⚙</span>System status</button>
+        <button data-page="audit"><span>↻</span>Audit logs</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="admin-avatar">GX</div><div><strong>Administrator</strong><small id="adminEmail"></small></div>
+        <button id="logoutButton" title="Logout">↪</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button id="menuButton" class="icon-button mobile-only">☰</button>
+        <div><p class="eyebrow">GROOPX ADMIN</p><h2 id="pageTitle">Dashboard overview</h2></div>
+        <div class="top-actions"><span class="live-pill"><i></i>System live</span><button id="refreshButton" class="icon-button" title="Refresh">↻</button></div>
+      </header>
+      <section id="content" class="content"></section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <div id="modal" class="modal hidden"><div class="modal-backdrop" data-close></div><div id="modalCard" class="modal-card"></div></div>
+  <script src="app.js"></script>
+</body>
+</html>

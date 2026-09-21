@@ -19,10 +19,11 @@ class AuthPage extends StatelessWidget {
             const Positioned(left: -50, bottom: -42, child: _Glow(size: 150)),
             if (showBack)
               Positioned(left: 13, top: 8, child: IconButton(onPressed: context.pop, icon: const Icon(Icons.arrow_back, color: authInk))),
-            SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 48, 24, 32),
-              child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 700), child: child),
-            ),
+            Positioned.fill(child: LayoutBuilder(builder: (context, constraints) => SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(24, showBack ? 52 : 28, 24, 28),
+              child: ConstrainedBox(constraints: BoxConstraints(minHeight: constraints.maxHeight - (showBack ? 80 : 56)), child: child),
+            ))),
           ]),
         ),
       );
@@ -59,7 +60,7 @@ class GroopXBrand extends StatelessWidget {
 class PurpleButton extends StatelessWidget {
   const PurpleButton({super.key, required this.label, required this.onPressed});
   final String label;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   @override
   Widget build(BuildContext context) => SizedBox(
         width: double.infinity,
@@ -74,7 +75,6 @@ class PurpleButton extends StatelessWidget {
         ),
       );
 }
-
 class SecurityNote extends StatelessWidget {
   const SecurityNote(this.text, {super.key});
   final String text;
@@ -93,6 +93,7 @@ class PhoneField extends StatelessWidget {
   Widget build(BuildContext context) => TextField(
         controller: controller,
         keyboardType: TextInputType.phone,
+        style: const TextStyle(color: authInk, fontSize: 16, fontWeight: FontWeight.w600),
         decoration: InputDecoration(
           hintText: 'Enter mobile number',
           prefixIcon: const Padding(padding: EdgeInsets.all(14), child: Text('🇮🇳  +91  ⌄', style: TextStyle(fontSize: 14))),
@@ -102,4 +103,3 @@ class PhoneField extends StatelessWidget {
         ),
       );
 }
-

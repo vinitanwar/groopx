@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import '../../notifications/data/push_service.dart';
 import 'auth_components.dart';
 import 'phone_screen.dart';
 import '../data/auth_api.dart';
-import '../data/auth_session.dart';
 
 class OtpScreen extends StatefulWidget {
   const OtpScreen({super.key, required this.mode, required this.phone});
@@ -17,8 +19,18 @@ class OtpScreen extends StatefulWidget {
 class _OtpScreenState extends State<OtpScreen> {
   final fields = List.generate(6, (_) => TextEditingController());
   bool loading = false;
+  bool resending = false;
+  int resendSeconds = 60;
+  Timer? resendTimer;
+
   @override
-  void dispose() { for (final field in fields) { field.dispose(); } super.dispose(); }
+  void initState() {
+    super.initState();
+    _startResendTimer();
+  }
+
+  @override
+  void dispose() { resendTimer?.cancel(); for (final field in fields) { field.dispose(); } super.dispose(); }
 
   @override
   Widget build(BuildContext context) => AuthPage(
@@ -47,7 +59,10 @@ class _OtpScreenState extends State<OtpScreen> {
           const SizedBox(height: 44),
           const Text("Didn’t receive the code?", style: TextStyle(color: authMuted)),
           const SizedBox(height: 7),
-          const Text.rich(TextSpan(children: [TextSpan(text: 'Resend OTP in '), TextSpan(text: '00:28', style: TextStyle(color: authPurple))]), style: TextStyle(color: authMuted)),
+          if (resendSeconds > 0)
+            Text.rich(TextSpan(children: [const TextSpan(text: 'Resend OTP in '), TextSpan(text: '00:${resendSeconds.toString().padLeft(2, '0')}', style: const TextStyle(color: authPurple))]), style: const TextStyle(color: authMuted))
+          else
+            TextButton(onPressed: resending ? null : _resend, child: Text(resending ? 'Sending…' : 'Resend OTP')),
           const SizedBox(height: 28),
           PurpleButton(label: loading ? 'Verifying…' : 'Verify & Continue', onPressed: loading ? () {} : _verify),
           const SizedBox(height: 28),
@@ -61,10 +76,45 @@ class _OtpScreenState extends State<OtpScreen> {
     setState(() => loading = true);
     try {
       final response = await AuthApi.instance.verifyOtp(widget.phone, code);
-      await AuthSession.instance.saveAuthentication(response, profileComplete: widget.mode == AuthMode.signIn);
-      if (mounted) context.go(widget.mode == AuthMode.signUp ? '/profile-setup' : '/chats');
+      await PushService.registerCurrentDevice();
+      final isNewUser = response['is_new_user'] == true;
+      if (!mounted) return;
+      if (isNewUser) {
+        context.go('/profile-setup');
+      } else {
+        final invite = await AuthSession.instance.takePendingInvite();
+        if (mounted) context.go(invite == null ? '/chats' : '/join/$invite');
+      }
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid or expired OTP')));
     } finally { if (mounted) setState(() => loading = false); }
+  }
+
+  void _startResendTimer() {
+    resendTimer?.cancel();
+    setState(() => resendSeconds = 60);
+    resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return timer.cancel();
+      if (resendSeconds <= 1) {
+        timer.cancel();
+        setState(() => resendSeconds = 0);
+      } else {
+        setState(() => resendSeconds--);
+      }
+    });
+  }
+
+  Future<void> _resend() async {
+    setState(() => resending = true);
+    try {
+      await AuthApi.instance.requestOtp(widget.phone);
+      for (final field in fields) { field.clear(); }
+      _startResendTimer();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('New OTP sent')));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('OTP resend nahi hua. Thodi der baad retry karein.')));
+    } finally {
+      if (mounted) setState(() => resending = false);
+    }
   }
 }

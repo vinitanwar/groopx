@@ -1,0 +1,34 @@
+.panel > label {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 15px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.panel > label input,
+.panel > label textarea,
+.panel > label select {
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fbfafe;
+  color: var(--ink);
+  font: inherit;
+  outline: none;
+  resize: vertical;
+}
+
+.panel > label input:focus,
+.panel > label textarea:focus,
+.panel > label select:focus {
+  border-color: #ae91ff;
+  box-shadow: 0 0 0 4px #f1ecff;
+}
+
+.panel > .primary-button {
+  width: 100%;
+  justify-content: center;
+}

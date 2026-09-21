@@ -1,0 +1,16 @@
+import 'package:flutter/material.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/groopx_ui.dart';
+import '../data/chat_api.dart';
+import '../domain/chat_models.dart';
+
+class SharedMediaScreen extends StatefulWidget{const SharedMediaScreen({super.key,required this.conversationId});final String conversationId;@override State<SharedMediaScreen> createState()=>_SharedMediaScreenState();}
+class _SharedMediaScreenState extends State<SharedMediaScreen>{List<SharedMediaItem> items=const[];bool loading=true;String? error;String filter='all';
+  @override void initState(){super.initState();_load();}
+  Future<void> _load()async{setState((){loading=true;error=null;});try{final value=await ChatApi.instance.sharedMedia(widget.conversationId);if(mounted)setState(()=>items=value);}catch(_){if(mounted)setState(()=>error='Shared files load nahi hui.');}finally{if(mounted)setState(()=>loading=false);}}
+  List<SharedMediaItem> get visible=>filter=='all'?items:items.where((item)=>filter=='media'?item.kind=='image'||item.kind=='video':filter=='documents'?item.kind=='file':item.kind=='audio').toList();
+  @override Widget build(BuildContext context)=>Scaffold(backgroundColor:AppColors.background,appBar:AppBar(title:const Text('Media, links & docs')),body:GroopXBackground(child:Column(children:[Padding(padding:const EdgeInsets.fromLTRB(16,14,16,8),child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:['all','media','documents','audio'].map((value)=>Padding(padding:const EdgeInsets.only(right:8),child:ChoiceChip(label:Text(value[0].toUpperCase()+value.substring(1)),selected:filter==value,onSelected:(_)=>setState(()=>filter=value)))).toList()))),Expanded(child:loading?const Center(child:CircularProgressIndicator()):error!=null?GroopXEmptyState(icon:Icons.cloud_off_outlined,title:'Unable to load',message:error!,actionLabel:'Retry',actionIcon:Icons.refresh,onAction:_load):visible.isEmpty?const GroopXEmptyState(icon:Icons.perm_media_outlined,title:'Nothing shared yet',message:'Chat mein share ki hui photos, videos, audio aur documents yahan dikhengi.'):RefreshIndicator(onRefresh:_load,child:GridView.builder(padding:const EdgeInsets.all(16),gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:2,crossAxisSpacing:10,mainAxisSpacing:10,childAspectRatio:1.05),itemCount:visible.length,itemBuilder:(_,index)=>_tile(visible[index]))))])));
+  Widget _tile(SharedMediaItem item){final media=item.kind=='image'&&item.url.isNotEmpty;return Card(clipBehavior:Clip.antiAlias,child:media?Image.network(item.url,fit:BoxFit.cover,errorBuilder:(_,__,___)=>_file(item)): _file(item));}
+  Widget _file(SharedMediaItem item)=>Padding(padding:const EdgeInsets.all(14),child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[Icon(_icon(item.kind),size:38,color:AppColors.purple),const SizedBox(height:10),Text(item.name,maxLines:2,overflow:TextOverflow.ellipsis,textAlign:TextAlign.center,style:const TextStyle(fontWeight:FontWeight.w600)),const SizedBox(height:5),Text('${item.createdAt.day}/${item.createdAt.month}/${item.createdAt.year}',style:const TextStyle(fontSize:11,color:AppColors.muted))]));
+  IconData _icon(String kind)=>switch(kind){'video'=>Icons.play_circle_outline,'audio'=>Icons.audio_file_outlined,'image'=>Icons.image_outlined,_=>Icons.insert_drive_file_outlined};
+}

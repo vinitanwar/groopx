@@ -1,0 +1,9 @@
+import 'package:flutter/material.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/groopx_ui.dart';
+
+class HelpAboutScreen extends StatelessWidget{
+  const HelpAboutScreen({super.key});
+  @override Widget build(BuildContext context)=>Scaffold(backgroundColor:AppColors.background,appBar:AppBar(title:const Text('Help & About')),body:GroopXBackground(child:ListView(padding:const EdgeInsets.all(18),children:[Center(child:Column(children:[Container(width:82,height:82,decoration:BoxDecoration(color:AppColors.purple,borderRadius:BorderRadius.circular(25)),child:const Icon(Icons.chat_bubble_rounded,color:Colors.white,size:45)),const SizedBox(height:13),const Text('GroopX',style:TextStyle(fontSize:25,fontWeight:FontWeight.w900)),const Text('Group chats. Privacy first.',style:TextStyle(color:AppColors.muted)),const SizedBox(height:4),const Text('Version 0.1.0 (1)',style:TextStyle(fontSize:12,color:AppColors.muted))])),const SizedBox(height:28),Card(child:Column(children:[_row(Icons.help_outline,'Help centre','Common account, chat and group guidance'),const Divider(height:1,indent:58),_row(Icons.privacy_tip_outlined,'Privacy','Your phone number stays hidden from group members'),const Divider(height:1,indent:58),_row(Icons.gavel_outlined,'Terms','Use GroopX respectfully and lawfully')])),const SizedBox(height:18),Card(child:const Padding(padding:EdgeInsets.all(18),child:Text('GroopX is built for private direct conversations, moderated groups, communities, reminders and secure audio/video calling.',style:TextStyle(color:AppColors.muted,height:1.5))))])));
+  Widget _row(IconData icon,String title,String subtitle)=>ListTile(contentPadding:const EdgeInsets.symmetric(horizontal:16,vertical:7),leading:Icon(icon,color:AppColors.purple),title:Text(title,style:const TextStyle(fontWeight:FontWeight.w700)),subtitle:Text(subtitle));
+}

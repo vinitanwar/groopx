@@ -31,6 +31,10 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+android/app/google-services.json
+android/key.properties
+android/app/*.jks
+android/app/*.keystore
 /coverage/
 
 # Symbolication related

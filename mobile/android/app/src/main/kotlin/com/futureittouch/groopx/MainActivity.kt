@@ -1,4 +1,4 @@
-package com.example.groopx
+package com.futureittouch.groopx
 
 import io.flutter.embedding.android.FlutterActivity
 

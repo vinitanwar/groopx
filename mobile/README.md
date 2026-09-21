@@ -1,17 +1,36 @@
-# groopx
+# GroopX Mobile
 
-A new Flutter project.
+Flutter client for private direct messaging, groups, communities, statuses,
+reminders, notifications, and LiveKit audio/video calls.
 
-## Getting Started
+## Requirements
 
-This project is a starting point for a Flutter application.
+- Flutter stable with Dart 3.4+
+- Android SDK and Java 17
+- A running GroopX API
 
-A few resources to get you started if this is your first Flutter project:
+## Configure and run
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```powershell
+flutter pub get
+flutter run --dart-define=API_BASE_URL=https://groopx.onrender.com/api/v1 --dart-define=WS_BASE_URL=wss://groopx.onrender.com
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+For Firebase push notifications, download `google-services.json` for application
+ID `com.futureittouch.groopx` and place it in `android/app/`. Do not commit it.
+
+## Release signing
+
+Create a release keystore, copy `android/key.properties.example` to
+`android/key.properties`, then replace all placeholder values. Both files are
+excluded from Git.
+
+## Build release APK
+
+```powershell
+flutter clean
+flutter pub get
+flutter build apk --release --dart-define=API_BASE_URL=https://groopx.onrender.com/api/v1 --dart-define=WS_BASE_URL=wss://groopx.onrender.com
+```
+
+Output: `build/app/outputs/flutter-apk/app-release.apk`.
