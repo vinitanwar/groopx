@@ -54,6 +54,14 @@ class ChatApi {
   Future<void> markRead(String conversationId) async {
     await _dio.post('/conversations/$conversationId/read');
   }
+  Future<ChatMessage> sendMessage(String conversationId, String text, {String? replyToId}) async {
+    final response=await _dio.post<Map<String,dynamic>>('/conversations/$conversationId/messages',data:{'text':text,if(replyToId!=null)'reply_to_id':replyToId});
+    return ChatMessage.fromJson(response.data!);
+  }
+  Future<ChatMessage> sendLocation(String conversationId,{required double latitude,required double longitude,String label='Shared location'}) async {
+    final response=await _dio.post<Map<String,dynamic>>('/conversations/$conversationId/location',data:{'latitude':latitude,'longitude':longitude,'label':label});
+    return ChatMessage.fromJson(response.data!);
+  }
   Future<void> archive(String conversationId, bool archived) async {
     if (archived) { await _dio.post('/conversations/$conversationId/archive'); } else { await _dio.delete('/conversations/$conversationId/archive'); }
   }

@@ -187,22 +187,24 @@ func markConversationRead(c *gin.Context) {
 func chatSocket(c *gin.Context) {
 	conversationID := c.Query("conversation_id")
 	userID, err := parseAccessToken(c.Query("access_token"))
-	if err != nil || conversationID == "" { c.JSON(http.StatusUnauthorized, gin.H{"error": "valid session and conversation are required"}); return }
-	if !isConversationMember(c, conversationID, userID) { c.JSON(http.StatusForbidden, gin.H{"error": "not a conversation member"}); return }
+	if err != nil { c.JSON(http.StatusUnauthorized, gin.H{"error": "valid session is required"}); return }
+	if conversationID != "" && !isConversationMember(c, conversationID, userID) { c.JSON(http.StatusForbidden, gin.H{"error": "not a conversation member"}); return }
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil); if err != nil { return }
 	client := &socketClient{connection: conn, userID: userID}
-	joinRoom(conversationID, client)
-	announcePresence(conversationID, userID, true)
+	room := conversationID; if room == "" { room = "user:"+userID }
+	joinRoom(room, client)
+	announceUserPresence(userID, true)
 	defer func() {
-		broadcast(conversationID,userID,gin.H{"type":"typing","user_id":userID,"typing":false})
-		leaveRoom(conversationID, client)
+		if conversationID != "" { broadcast(conversationID,userID,gin.H{"type":"typing","user_id":userID,"typing":false}) }
+		leaveRoom(room, client)
 		stillOnline := isUserOnline(userID)
 		if !stillOnline { _, _ = db.Exec(context.Background(), `UPDATE users SET last_seen_at=NOW() WHERE id=$1`, userID) }
-		announcePresence(conversationID, userID, stillOnline)
+		announceUserPresence(userID, stillOnline)
 		conn.Close()
 	}()
 	for {
 		_, data, err := conn.ReadMessage(); if err != nil { return }
+		if conversationID == "" { continue }
 		var input struct { Type string `json:"type"`; Text string `json:"text"`; ReplyToID string `json:"reply_to_id"`; Typing bool `json:"typing"` }
 		if json.Unmarshal(data, &input) != nil { continue }
 		var otherID string
@@ -225,6 +227,13 @@ func chatSocket(c *gin.Context) {
 		broadcast(conversationID, userID, gin.H{"type":"message", "id":id, "conversation_id":conversationID, "sender_id":userID, "text":strings.TrimSpace(input.Text), "kind":"text", "status":status, "created_at":createdAt, "reply":reply})
 		notifyConversation(conversationID,userID,"message","New message",strings.TrimSpace(input.Text),map[string]any{"conversation_id":conversationID,"message_id":id})
 	}
+}
+
+func announceUserPresence(userID string, online bool) {
+	var visible bool
+	if db.QueryRow(context.Background(), `SELECT show_online_status FROM users WHERE id=$1`, userID).Scan(&visible) != nil || !visible { return }
+	rows,err:=db.Query(context.Background(),`SELECT conversation_id::text FROM conversation_members WHERE user_id=$1`,userID);if err!=nil{return};defer rows.Close()
+	for rows.Next(){var room string;if rows.Scan(&room)==nil{broadcast(room,userID,gin.H{"type":"presence","user_id":userID,"online":online,"at":time.Now()})}}
 }
 
 func isConversationMember(c *gin.Context, conversationID, userID string) bool {

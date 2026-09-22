@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/groopx_ui.dart';
 import '../../auth/data/auth_api.dart';
+import '../../chat/data/presence_socket.dart';
 
 class AccountSecurityScreen extends StatefulWidget {
   const AccountSecurityScreen({super.key});
@@ -33,6 +34,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
       actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Log out'))],
     ));
     if (confirmed != true) return;
+    await PresenceSocket.instance.stop();
     await AuthApi.instance.logout();
     if (mounted) context.go('/');
   }

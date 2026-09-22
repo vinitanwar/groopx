@@ -39,6 +39,7 @@ import 'package:groopx/features/contacts/presentation/contact_info_screen.dart';
 import 'package:groopx/features/profile/presentation/linked_devices_screen.dart';
 import 'package:groopx/features/notifications/data/push_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:groopx/features/chat/data/presence_socket.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -114,7 +115,10 @@ class _GroopXAppState extends State<GroopXApp> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => PushService.initialize(onOpen: _openPush, onForeground: _showForeground));
+    if(widget.initialLocation!='/') PresenceSocket.instance.start();
   }
+
+  @override void dispose(){PresenceSocket.instance.stop();super.dispose();}
 
   void _openPush(Map<String, dynamic> data) {
     final callID=data['call_id']?.toString(), conversationID=data['conversation_id']?.toString();

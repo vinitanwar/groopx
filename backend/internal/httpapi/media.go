@@ -57,7 +57,7 @@ func completeMediaMessage(c *gin.Context) {
 	ctx:=c.Request.Context();tx,err:=db.Begin(ctx);if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"media message could not be saved"});return};defer tx.Rollback(ctx)
 	var mediaID string;err=tx.QueryRow(ctx,`INSERT INTO media_objects(owner_id,object_key,file_name,content_type,size_bytes,duration_ms) VALUES($1,$2,$3,$4,$5,NULLIF($6,0)) RETURNING id::text`,userID,input.ObjectKey,input.FileName,input.ContentType,input.Size,input.DurationMS).Scan(&mediaID)
 	if err!=nil{c.JSON(http.StatusConflict,gin.H{"error":"media upload was already completed"});return}
-	status:="sent";if onlineRecipients(input.ConversationID,userID)>0{status="delivered"}
+	status:="sent";if onlineRecipients(input.ConversationID,userID)>0||isConversationPeerOnline(input.ConversationID,userID){status="delivered"}
 	var messageID string;var createdAt time.Time
 	err=tx.QueryRow(ctx,`INSERT INTO messages(conversation_id,sender_id,kind,body,metadata,status) VALUES($1,$2,$3,$4,$5,$6) RETURNING id::text,created_at`,input.ConversationID,userID,kind,input.FileName,metadataJSON,status).Scan(&messageID,&createdAt)
 	if err==nil{_,err=tx.Exec(ctx,`INSERT INTO message_attachments(message_id,media_id) VALUES($1,$2)`,messageID,mediaID)}

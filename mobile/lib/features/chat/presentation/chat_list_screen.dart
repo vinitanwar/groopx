@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../data/chat_api.dart';
+import '../data/presence_socket.dart';
 import '../domain/chat_models.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/groopx_ui.dart';
@@ -26,6 +27,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   void initState() {
     super.initState();
+    PresenceSocket.instance.start();
     _load();
   }
 

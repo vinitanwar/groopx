@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:dio/dio.dart';
 
 import '../../auth/presentation/auth_components.dart';
 import '../../contacts/data/social_api.dart';
@@ -47,7 +50,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
       final connected = await ChatSocket.connect(widget.conversationId);
       subscription = connected.events.listen((event) {
         if (event['type'] == 'message') {
-          if (mounted) setState(() => messages.add(ChatMessage.fromJson(event)));
+          final incoming=ChatMessage.fromJson(event);
+          if (mounted && !messages.any((item)=>item.id==incoming.id)) setState(() => messages.add(incoming));
           ChatApi.instance.markRead(widget.conversationId);
         } else if (event['type'] == 'message_update' || event['type'] == 'message_delete' || event['type'] == 'reaction') {
           _refreshMessages();
@@ -74,13 +78,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
 	finally { if (mounted) setState(() => loadingOlder = false); }
   }
 
-  void send() {
+  Future<void> send() async {
     final text = input.text.trim();
     if (text.isEmpty) return;
     if (details?.communicationBlocked == true) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Communication is blocked'))); return; }
-    if (socket == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chat is reconnecting'))); return; }
-    socket!.send(text, replyToId: replyingTo?.id); socket!.sendTyping(false); input.clear();
-    setState(() => replyingTo = null);
+    final replyID=replyingTo?.id; input.clear(); setState(() => replyingTo = null);
+    try{
+      final saved=await ChatApi.instance.sendMessage(widget.conversationId,text,replyToId:replyID);
+      if(mounted&&!messages.any((item)=>item.id==saved.id))setState(()=>messages.add(saved));
+      socket?.sendTyping(false);
+    }catch(_){if(mounted){input.text=text;ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Message send nahi hua. Retry karein.')));}}
   }
 
   void _typing(String value) {
@@ -95,15 +102,33 @@ class _ConversationScreenState extends State<ConversationScreen> {
       setState(() { uploading = true; uploadProgress = 0; });
       await MediaApi.instance.pickAndUpload(conversationId: widget.conversationId, type: type, onProgress: (value) { if (mounted) setState(() => uploadProgress = value); });
     } catch (failure) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $failure')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_uploadError(failure))));
     } finally { if (mounted) setState(() => uploading = false); }
   }
 
-  void _showAttachments() => showModalBottomSheet<void>(context: context, builder: (_) => SafeArea(child: Padding(padding: const EdgeInsets.all(20), child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+  String _uploadError(Object failure){
+    if(failure is DioException){final data=failure.response?.data;if(data is Map&&data['error']!=null)return data['error'].toString();}
+    return 'Upload failed. Internet check karke retry karein.';
+  }
+
+  void _showAttachments() => showModalBottomSheet<void>(context: context, builder: (_) => SafeArea(child: Padding(padding: const EdgeInsets.all(20), child: Wrap(alignment:WrapAlignment.spaceAround,runSpacing:12,children: [
     _AttachmentAction(icon: Icons.image, label: 'Image', onTap: () => _upload(FileType.image)),
+    _AttachmentAction(icon: Icons.video_file, label: 'Video', onTap: () => _upload(FileType.video)),
     _AttachmentAction(icon: Icons.description, label: 'Document', onTap: () => _upload(FileType.any)),
-    _AttachmentAction(icon: Icons.audio_file, label: 'Audio', onTap: () => _upload(FileType.audio)),
+    _AttachmentAction(icon: Icons.location_on, label: 'Location', onTap: _sendLocation),
   ]))));
+
+  Future<void> _sendLocation() async{
+    Navigator.of(context).pop();
+    try{
+      var permission=await Geolocator.checkPermission();
+      if(permission==LocationPermission.denied)permission=await Geolocator.requestPermission();
+      if(permission==LocationPermission.denied||permission==LocationPermission.deniedForever)throw StateError('Location permission denied');
+      final position=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,timeLimit:Duration(seconds:15)));
+      final saved=await ChatApi.instance.sendLocation(widget.conversationId,latitude:position.latitude,longitude:position.longitude);
+      if(mounted&&!messages.any((item)=>item.id==saved.id))setState(()=>messages.add(saved));
+    }catch(_){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Location share nahi ho saki. Permission aur GPS check karein.')));}
+  }
 
   Future<void> _refreshMessages() async {
     final page = await ChatApi.instance.messagePage(widget.conversationId);
@@ -205,6 +230,10 @@ class _AttachmentBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final url = message.attachment?['url'] as String?;
     if (message.kind == 'image' && url != null) return ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(url, width: 220, height: 160, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fileRow(Icons.broken_image)));
+    if(message.kind=='location'){
+      final mapUrl=message.attachment?['map_url']?.toString();
+      return InkWell(onTap:mapUrl==null?null:()=>launchUrl(Uri.parse(mapUrl),mode:LaunchMode.externalApplication),child:_fileRow(Icons.location_on));
+    }
     return _fileRow(message.kind == 'audio' ? Icons.play_circle : message.kind == 'video' ? Icons.video_file : Icons.description);
   }
   Widget _fileRow(IconData icon) => Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, color: authPurple), const SizedBox(width: 8), Flexible(child: Text(message.attachment?['file_name'] as String? ?? message.text, overflow: TextOverflow.ellipsis, style: const TextStyle(color: authInk)))]);

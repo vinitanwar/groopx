@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:dio/dio.dart';
 
 import '../data/call_api.dart';
 
@@ -38,7 +39,12 @@ class _CallScreenState extends State<CallScreen> {
       await localParticipant.setMicrophoneEnabled(true);
       if (widget.video) await localParticipant.setCameraEnabled(true);
       if (mounted) setState(() { activeCallId = session.id; room = connectedRoom; status = 'Connected'; });
-    } catch (failure) { if (mounted) setState(() { error = 'Unable to connect call'; status = 'Connection failed'; }); }
+    } catch (failure) { if (mounted) setState(() { error = _callError(failure); status = 'Connection failed'; }); }
+  }
+
+  String _callError(Object failure){
+    if(failure is DioException){final data=failure.response?.data;if(data is Map&&data['error']!=null)return data['error'].toString();}
+    return 'Unable to connect call. Internet aur permissions check karein.';
   }
 
   void _roomChanged() {
