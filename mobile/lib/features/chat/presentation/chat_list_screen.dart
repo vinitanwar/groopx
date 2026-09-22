@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../data/chat_api.dart';
@@ -5,6 +6,7 @@ import '../data/presence_socket.dart';
 import '../domain/chat_models.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/groopx_ui.dart';
+import '../../profile/data/backup_api.dart';
 
 const _purple = Color(0xFF6335FF);
 const _ink = Color(0xFF080C25);
@@ -28,6 +30,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   void initState() {
     super.initState();
     PresenceSocket.instance.start();
+    unawaited(BackupScheduler.maybeRun());
     _load();
   }
 

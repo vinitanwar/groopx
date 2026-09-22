@@ -7,6 +7,7 @@ import '../../notifications/data/push_service.dart';
 import 'auth_components.dart';
 import 'phone_screen.dart';
 import '../data/auth_api.dart';
+import '../../profile/data/backup_api.dart';
 
 class OtpScreen extends StatefulWidget {
   const OtpScreen({super.key, required this.mode, required this.phone});
@@ -83,7 +84,9 @@ class _OtpScreenState extends State<OtpScreen> {
         context.go('/profile-setup');
       } else {
         final invite = await AuthSession.instance.takePendingInvite();
-        if (mounted) context.go(invite == null ? '/chats' : '/join/$invite');
+        final destination = invite == null ? '/chats' : '/join/$invite';
+        final configured = await BackupPreferences.instance.setupComplete;
+        if (mounted) context.go(configured ? destination : '/backup-setup?next=${Uri.encodeQueryComponent(destination)}');
       }
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid or expired OTP')));

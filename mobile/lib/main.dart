@@ -32,6 +32,7 @@ import 'package:groopx/features/groups/presentation/edit_group_screen.dart';
 import 'package:groopx/features/chat/presentation/shared_media_screen.dart';
 import 'package:groopx/features/chat/presentation/attachment_preview_screen.dart';
 import 'package:groopx/features/profile/presentation/data_storage_screen.dart';
+import 'package:groopx/features/profile/presentation/backup_setup_screen.dart';
 import 'package:groopx/features/profile/presentation/help_about_screen.dart';
 import 'package:groopx/features/profile/presentation/avatar_preview_screen.dart';
 import 'package:groopx/features/notifications/presentation/notification_detail_screen.dart';
@@ -66,6 +67,7 @@ GoRouter _createRouter(String initialLocation) => GoRouter(
       ),
     ),
     GoRoute(path: '/profile-setup', builder: (_, __) => const ProfileSetupScreen()),
+    GoRoute(path: '/backup-setup', builder: (_, state) => BackupSetupScreen(nextRoute: state.uri.queryParameters['next'] ?? '/chats')),
     GoRoute(path: '/invite-code', builder: (_, __) => const InviteCodeScreen()),
     GoRoute(path: '/chats', builder: (_, __) => const ChatListScreen()),
     GoRoute(path: '/chat/:id', builder: (_, state) => ConversationScreen(conversationId: state.pathParameters['id']!)),

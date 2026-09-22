@@ -72,7 +72,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         gender: gender,
       );
       final invite = await AuthSession.instance.takePendingInvite();
-      if (mounted) context.go(invite == null ? '/chats' : '/join/$invite');
+      final destination = invite == null ? '/chats' : '/join/$invite';
+      if (mounted) context.go('/backup-setup?next=${Uri.encodeQueryComponent(destination)}');
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile could not be saved. Check the username and date.')));
     } finally {
