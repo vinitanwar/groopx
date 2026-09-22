@@ -1,8 +1,8 @@
-CREATE TYPE reminder_status AS ENUM ('upcoming', 'completed', 'cancelled');
-CREATE TYPE call_kind AS ENUM ('audio', 'video');
-CREATE TYPE call_status AS ENUM ('ringing', 'answered', 'missed', 'declined', 'ended');
+DO $$ BEGIN CREATE TYPE reminder_status AS ENUM ('upcoming', 'completed', 'cancelled'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE call_kind AS ENUM ('audio', 'video'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE call_status AS ENUM ('ringing', 'answered', 'missed', 'declined', 'ended'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE TABLE reminders (
+CREATE TABLE IF NOT EXISTS reminders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
@@ -13,7 +13,7 @@ CREATE TABLE reminders (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE user_devices (
+CREATE TABLE IF NOT EXISTS user_devices (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   platform VARCHAR(20) NOT NULL CHECK (platform IN ('android', 'ios', 'web')),
@@ -22,7 +22,7 @@ CREATE TABLE user_devices (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE calls (
+CREATE TABLE IF NOT EXISTS calls (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
   initiated_by UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -34,7 +34,7 @@ CREATE TABLE calls (
   ended_at TIMESTAMPTZ
 );
 
-CREATE TABLE call_participants (
+CREATE TABLE IF NOT EXISTS call_participants (
   call_id UUID NOT NULL REFERENCES calls(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   joined_at TIMESTAMPTZ,
@@ -42,5 +42,5 @@ CREATE TABLE call_participants (
   PRIMARY KEY (call_id, user_id)
 );
 
-CREATE INDEX reminders_user_schedule_idx ON reminders(user_id, scheduled_at);
-CREATE INDEX calls_conversation_started_idx ON calls(conversation_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS reminders_user_schedule_idx ON reminders(user_id, scheduled_at);
+CREATE INDEX IF NOT EXISTS calls_conversation_started_idx ON calls(conversation_id, started_at DESC);

@@ -1,8 +1,8 @@
-CREATE TYPE conversation_kind AS ENUM ('direct', 'group', 'community');
-CREATE TYPE message_kind AS ENUM ('text', 'image', 'video', 'audio', 'file', 'call', 'system');
-CREATE TYPE message_status AS ENUM ('sent', 'delivered', 'read');
+DO $$ BEGIN CREATE TYPE conversation_kind AS ENUM ('direct', 'group', 'community'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE message_kind AS ENUM ('text', 'image', 'video', 'audio', 'file', 'call', 'system'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE message_status AS ENUM ('sent', 'delivered', 'read'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE TABLE conversations (
+CREATE TABLE IF NOT EXISTS conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   kind conversation_kind NOT NULL,
   title VARCHAR(160),
@@ -13,7 +13,7 @@ CREATE TABLE conversations (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE conversation_members (
+CREATE TABLE IF NOT EXISTS conversation_members (
   conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role VARCHAR(30) NOT NULL DEFAULT 'member',
@@ -24,7 +24,7 @@ CREATE TABLE conversation_members (
   PRIMARY KEY (conversation_id, user_id)
 );
 
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   sender_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -38,11 +38,14 @@ CREATE TABLE messages (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE conversation_members
-  ADD CONSTRAINT conversation_members_last_read_fk
-  FOREIGN KEY (last_read_message_id) REFERENCES messages(id) ON DELETE SET NULL;
+DO $$ BEGIN
+  ALTER TABLE conversation_members
+    ADD CONSTRAINT conversation_members_last_read_fk
+    FOREIGN KEY (last_read_message_id) REFERENCES messages(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TABLE message_reactions (
+CREATE TABLE IF NOT EXISTS message_reactions (
   message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   emoji VARCHAR(16) NOT NULL,
@@ -50,5 +53,5 @@ CREATE TABLE message_reactions (
   PRIMARY KEY (message_id, user_id, emoji)
 );
 
-CREATE INDEX messages_conversation_created_idx ON messages(conversation_id, created_at DESC);
-CREATE INDEX conversation_members_user_idx ON conversation_members(user_id, archived_at);
+CREATE INDEX IF NOT EXISTS messages_conversation_created_idx ON messages(conversation_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS conversation_members_user_idx ON conversation_members(user_id, archived_at);
