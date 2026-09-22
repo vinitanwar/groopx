@@ -49,11 +49,10 @@ func listConversations(c *gin.Context) {
 			SELECT m.body, m.created_at FROM messages m
 			WHERE m.conversation_id=c.id AND m.deleted_at IS NULL ORDER BY m.created_at DESC LIMIT 1
 		) last_message ON TRUE
-		LEFT JOIN messages last_read ON last_read.id=mine.last_read_message_id
 		LEFT JOIN messages unread ON unread.conversation_id=c.id AND unread.sender_id<>mine.user_id
-			AND unread.deleted_at IS NULL AND unread.created_at>COALESCE(last_read.created_at, mine.joined_at)
+			AND unread.deleted_at IS NULL AND unread.created_at>COALESCE(mine.last_read_at, mine.joined_at)
 		WHERE mine.user_id=$1 AND (($2=TRUE AND mine.archived_at IS NOT NULL) OR ($2=FALSE AND mine.archived_at IS NULL)) AND mine.hidden_at IS NULL
-		GROUP BY c.id, other.full_name, other.phone, other.avatar_url, last_message.body, last_message.created_at,mine.favorite,mine.archived_at,mine.muted_until
+		GROUP BY c.id, other.full_name, other.phone, other.avatar_url, last_message.body, last_message.created_at,mine.favorite,mine.archived_at,mine.muted_until,mine.last_read_at
 		ORDER BY mine.favorite DESC,COALESCE(last_message.created_at, c.created_at) DESC`, userID, archived)
 	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "conversations could not be loaded"}); return }
 	defer rows.Close()
@@ -171,9 +170,10 @@ func markConversationRead(c *gin.Context) {
 	conversationID, userID := c.Param("id"), c.GetString("user_id")
 	if !isConversationMember(c, conversationID, userID) { c.JSON(http.StatusForbidden, gin.H{"error": "not a conversation member"}); return }
 	var messageID string
-	err := db.QueryRow(c.Request.Context(), `SELECT id::text FROM messages WHERE conversation_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`, conversationID).Scan(&messageID)
+	var messageCreatedAt time.Time
+	err := db.QueryRow(c.Request.Context(), `SELECT id::text,created_at FROM messages WHERE conversation_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT 1`, conversationID).Scan(&messageID,&messageCreatedAt)
 	if err == nil {
-		_, _ = db.Exec(c.Request.Context(), `UPDATE conversation_members SET last_read_message_id=$3 WHERE conversation_id=$1 AND user_id=$2`, conversationID, userID, messageID)
+		_, _ = db.Exec(c.Request.Context(), `UPDATE conversation_members SET last_read_message_id=$3,last_read_at=GREATEST(COALESCE(last_read_at,'epoch'::timestamptz),$4) WHERE conversation_id=$1 AND user_id=$2`, conversationID, userID, messageID, messageCreatedAt)
 		var receipts bool
 		_ = db.QueryRow(c.Request.Context(), `SELECT read_receipts FROM users WHERE id=$1`, userID).Scan(&receipts)
 		if receipts {
