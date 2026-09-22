@@ -31,8 +31,12 @@ class _CallScreenState extends State<CallScreen> {
       final connectedRoom = Room(roomOptions: const RoomOptions(adaptiveStream: true, dynacast: true));
       connectedRoom.addListener(_roomChanged);
       await connectedRoom.connect(session.url, session.token);
-      await connectedRoom.localParticipant.setMicrophoneEnabled(true);
-      if (widget.video) await connectedRoom.localParticipant.setCameraEnabled(true);
+      final localParticipant = connectedRoom.localParticipant;
+      if (localParticipant == null) {
+        throw StateError('Local participant is unavailable');
+      }
+      await localParticipant.setMicrophoneEnabled(true);
+      if (widget.video) await localParticipant.setCameraEnabled(true);
       if (mounted) setState(() { activeCallId = session.id; room = connectedRoom; status = 'Connected'; });
     } catch (failure) { if (mounted) setState(() { error = 'Unable to connect call'; status = 'Connection failed'; }); }
   }
@@ -44,13 +48,13 @@ class _CallScreenState extends State<CallScreen> {
 
   Future<void> _toggleMute() async {
     final value = !muted;
-    await room?.localParticipant.setMicrophoneEnabled(!value);
+    await room?.localParticipant?.setMicrophoneEnabled(!value);
     if (mounted) setState(() => muted = value);
   }
 
   Future<void> _toggleCamera() async {
     final value = !camera;
-    await room?.localParticipant.setCameraEnabled(value);
+    await room?.localParticipant?.setCameraEnabled(value);
     if (mounted) setState(() => camera = value);
   }
 
@@ -101,7 +105,11 @@ class _CallScreenState extends State<CallScreen> {
   Widget _videoStage() {
     final connectedRoom = room;
     if (connectedRoom == null) return const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF242B43), Color(0xFF080C1D)])), child: Center(child: CircularProgressIndicator(color: Color(0xFF6335FF))));
-    final participants = <Participant>[connectedRoom.localParticipant, ...connectedRoom.remoteParticipants.values];
+    final localParticipant = connectedRoom.localParticipant;
+    final participants = <Participant>[
+      if (localParticipant != null) localParticipant,
+      ...connectedRoom.remoteParticipants.values,
+    ];
     return Padding(padding: const EdgeInsets.fromLTRB(8, 88, 8, 105), child: GridView.builder(
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: participants.length <= 1 ? 1 : 2, crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: participants.length <= 2 ? .72 : .82),
