@@ -3,16 +3,17 @@ import 'package:dio/dio.dart';
 import '../../auth/data/auth_api.dart';
 
 class ReminderItem {
-  const ReminderItem({required this.id, required this.title, required this.scheduledAt, required this.status, this.notes = '', this.conversationTitle = ''});
+  const ReminderItem({required this.id, required this.title, required this.scheduledAt, required this.status, this.notes = '', this.conversationId = '', this.conversationTitle = ''});
   factory ReminderItem.fromJson(Map<String, dynamic> json) => ReminderItem(
     id: json['id'] as String,
     title: json['title'] as String,
     scheduledAt: DateTime.parse(json['scheduled_at'] as String).toLocal(),
     status: json['status'] as String? ?? 'upcoming',
     notes: json['notes'] as String? ?? '',
+    conversationId: json['conversation_id'] as String? ?? '',
     conversationTitle: json['conversation_title'] as String? ?? '',
   );
-  final String id, title, status, notes, conversationTitle;
+  final String id, title, status, notes, conversationId, conversationTitle;
   final DateTime scheduledAt;
 }
 
@@ -46,5 +47,6 @@ class ReminderApi {
     await _dio.post('/reminders', data: {'title': title, 'scheduled_at': scheduledAt.toUtc().toIso8601String(), 'notes': notes});
   }
   Future<void> updateStatus(String id, String status) => _dio.patch('/reminders/$id', data: {'status': status});
+  Future<void> update(String id, {required String title, required DateTime scheduledAt, String notes = ''}) => _dio.patch('/reminders/$id', data: {'title': title, 'scheduled_at': scheduledAt.toUtc().toIso8601String(), 'notes': notes, 'status': 'upcoming'});
   Future<void> delete(String id) => _dio.delete('/reminders/$id');
 }

@@ -128,10 +128,11 @@ class _GroopXAppState extends State<GroopXApp> {
     final callID=data['call_id']?.toString(), conversationID=data['conversation_id']?.toString();
     if(callID?.isNotEmpty==true){final kind=data['kind']?.toString()=='video'?'video':'audio';final caller=Uri.encodeComponent(data['caller']?.toString()??'GroopX user');router.go('/calls/$kind/$callID/incoming?caller=$caller');}
     else if(conversationID?.isNotEmpty==true){router.go('/chat/$conversationID');}
+    else if(data['type']?.toString()=='reminder'){router.go('/reminders');}
     else{router.go('/notifications');}
   }
 
-  void _showForeground(String title,String body,Map<String,dynamic> data){if(data['call_id']?.toString().isNotEmpty==true){_openPush(data);return;}final context=rootNavigatorKey.currentContext;if(context!=null)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$title\n$body'),action:SnackBarAction(label:'View',onPressed:()=>router.go('/notifications'))));}
+  void _showForeground(String title,String body,Map<String,dynamic> data){if(data['call_id']?.toString().isNotEmpty==true){_openPush(data);return;}final context=rootNavigatorKey.currentContext;if(context!=null)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$title\n$body'),action:SnackBarAction(label:'View',onPressed:()=>data['type']?.toString()=='reminder'?router.go('/reminders'):router.go('/notifications'))));}
 
   @override
   Widget build(BuildContext context) => MaterialApp.router(

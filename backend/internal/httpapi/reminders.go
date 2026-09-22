@@ -1,6 +1,9 @@
 package httpapi
 
 import (
+	"context"
+	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -58,15 +61,58 @@ func createReminder(c *gin.Context) {
 }
 
 func updateReminder(c *gin.Context) {
-	var input struct { Status string `json:"status" binding:"required,oneof=completed cancelled upcoming"` }
-	if c.ShouldBindJSON(&input) != nil { c.JSON(http.StatusBadRequest, gin.H{"error":"invalid reminder status"}); return }
-	command, err := db.Exec(c.Request.Context(), `UPDATE reminders SET status=$3 WHERE id=$1 AND user_id=$2`, c.Param("id"), c.GetString("user_id"), input.Status)
+	var input struct {
+		Status *string `json:"status" binding:"omitempty,oneof=completed cancelled upcoming"`
+		Title *string `json:"title" binding:"omitempty,max=160"`
+		Notes *string `json:"notes" binding:"omitempty,max=1000"`
+		ScheduledAt *time.Time `json:"scheduled_at"`
+	}
+	if c.ShouldBindJSON(&input) != nil || (input.Title != nil && strings.TrimSpace(*input.Title) == "") || (input.ScheduledAt != nil && input.ScheduledAt.Before(time.Now().Add(-time.Minute))) { c.JSON(http.StatusBadRequest, gin.H{"error":"invalid reminder update"}); return }
+	command, err := db.Exec(c.Request.Context(), `UPDATE reminders SET
+		title=COALESCE(NULLIF(BTRIM($3::text),''),title),notes=CASE WHEN $4::text IS NULL THEN notes ELSE NULLIF(BTRIM($4::text),'') END,
+		scheduled_at=COALESCE($5::timestamptz,scheduled_at),status=COALESCE(NULLIF($6::text,'')::reminder_status,status),
+		notified_at=CASE WHEN $5::timestamptz IS NOT NULL OR $6::text='upcoming' THEN NULL ELSE notified_at END
+		WHERE id=$1 AND user_id=$2`, c.Param("id"), c.GetString("user_id"), input.Title, input.Notes, input.ScheduledAt, input.Status)
 	if err != nil || command.RowsAffected() == 0 { c.JSON(http.StatusNotFound, gin.H{"error":"reminder not found"}); return }
-	c.JSON(http.StatusOK, gin.H{"id":c.Param("id"),"status":input.Status})
+	c.JSON(http.StatusOK, gin.H{"id":c.Param("id")})
 }
 
 func deleteReminder(c *gin.Context) {
 	command, err := db.Exec(c.Request.Context(), `DELETE FROM reminders WHERE id=$1 AND user_id=$2`, c.Param("id"), c.GetString("user_id"))
 	if err != nil || command.RowsAffected() == 0 { c.JSON(http.StatusNotFound, gin.H{"error":"reminder not found"}); return }
 	c.Status(http.StatusNoContent)
+}
+
+type dueReminder struct { id, userID, title, body string }
+
+func startReminderScheduler() {
+	go func() {
+		dispatchDueReminders(context.Background())
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C { dispatchDueReminders(context.Background()) }
+	}()
+}
+
+func dispatchDueReminders(ctx context.Context) {
+	tx, err := db.Begin(ctx); if err != nil { return }
+	defer tx.Rollback(ctx)
+	rows, err := tx.Query(ctx, `WITH due AS (
+		SELECT r.id FROM reminders r JOIN users u ON u.id=r.user_id
+		WHERE r.status='upcoming' AND r.notified_at IS NULL AND r.scheduled_at<=NOW()
+		AND u.account_status='active' AND u.push_notifications=TRUE AND u.reminder_notifications=TRUE
+		ORDER BY r.scheduled_at FOR UPDATE OF r SKIP LOCKED LIMIT 100
+	) UPDATE reminders r SET notified_at=NOW() FROM due WHERE r.id=due.id
+	RETURNING r.id::text,r.user_id::text,r.title,COALESCE(r.notes,'')`)
+	if err != nil { return }
+	items := make([]dueReminder, 0)
+	for rows.Next() { var item dueReminder; if rows.Scan(&item.id,&item.userID,&item.title,&item.body)==nil { items=append(items,item) } }
+	rows.Close()
+	for _, item := range items {
+		body := item.body; if body == "" { body = "Your scheduled reminder is due now." }
+		data, _ := json.Marshal(gin.H{"type":"reminder","reminder_id":item.id})
+		if _, err = tx.Exec(ctx, `INSERT INTO notifications(user_id,type,title,body,data) VALUES($1,'reminder',$2,$3,$4)`,item.userID,item.title,body,data); err != nil { return }
+	}
+	if err = tx.Commit(ctx); err != nil { log.Printf("reminder dispatch commit failed: %v", err); return }
+	for _, item := range items { body:=item.body; if body=="" { body="Your scheduled reminder is due now." }; go sendReminderPush(item.userID,item.id,item.title,body) }
 }

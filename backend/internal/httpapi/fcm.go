@@ -47,3 +47,26 @@ func sendConversationPush(conversationID, senderID, kind, title, body string, da
 }
 
 func sendAdminPush(title,body,audience string){if pushClient==nil{return};query:=`SELECT d.push_token FROM user_devices d JOIN users u ON u.id=d.user_id WHERE u.account_status<>'deleted' AND u.push_notifications=TRUE`;if audience=="active"{query+=` AND u.account_status='active'`};rows,err:=db.Query(context.Background(),query);if err!=nil{return};defer rows.Close();tokens:=make([]string,0);for rows.Next(){var token string;if rows.Scan(&token)==nil{tokens=append(tokens,token)}};for start:=0;start<len(tokens);start+=500{end:=start+500;if end>len(tokens){end=len(tokens)};batch:=tokens[start:end];response,err:=pushClient.SendEachForMulticast(context.Background(),&messaging.MulticastMessage{Tokens:batch,Notification:&messaging.Notification{Title:title,Body:body},Data:map[string]string{"type":"announcement"},Android:&messaging.AndroidConfig{Priority:"high"},APNS:&messaging.APNSConfig{Payload:&messaging.APNSPayload{Aps:&messaging.Aps{Sound:"default"}}}});if err!=nil{continue};for index,result:=range response.Responses{if result.Error!=nil&&messaging.IsUnregistered(result.Error){_,_=db.Exec(context.Background(),`DELETE FROM user_devices WHERE push_token=$1`,batch[index])}}}}
+
+func sendReminderPush(userID, reminderID, title, body string) {
+	if pushClient == nil { return }
+	rows, err := db.Query(context.Background(), `SELECT d.push_token FROM user_devices d JOIN users u ON u.id=d.user_id
+		WHERE d.user_id=$1 AND u.account_status='active' AND u.push_notifications=TRUE AND u.reminder_notifications=TRUE`, userID)
+	if err != nil { return }
+	defer rows.Close()
+	tokens := make([]string, 0)
+	for rows.Next() { var token string; if rows.Scan(&token) == nil { tokens = append(tokens, token) } }
+	for start := 0; start < len(tokens); start += 500 {
+		end := start + 500; if end > len(tokens) { end = len(tokens) }
+		batch := tokens[start:end]
+		response, err := pushClient.SendEachForMulticast(context.Background(), &messaging.MulticastMessage{
+			Tokens: batch,
+			Notification: &messaging.Notification{Title:title, Body:body},
+			Data: map[string]string{"type":"reminder", "reminder_id":reminderID},
+			Android: &messaging.AndroidConfig{Priority:"high"},
+			APNS: &messaging.APNSConfig{Payload:&messaging.APNSPayload{Aps:&messaging.Aps{Sound:"default"}}},
+		})
+		if err != nil { continue }
+		for index, result := range response.Responses { if result.Error != nil && messaging.IsUnregistered(result.Error) { _, _ = db.Exec(context.Background(), `DELETE FROM user_devices WHERE push_token=$1`, batch[index]) } }
+	}
+}

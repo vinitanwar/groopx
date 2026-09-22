@@ -55,22 +55,40 @@ class _ReminderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(margin: const EdgeInsets.only(bottom: 13), padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(13), border: Border.all(color: const Color(0xFFE8E7EE)), boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 10)]), child: Row(children: [
     CircleAvatar(backgroundColor: (item.status == 'completed' ? const Color(0xFF17BFAE) : authPurple).withValues(alpha: .12), child: Icon(item.status == 'completed' ? Icons.check : Icons.notifications_none, color: item.status == 'completed' ? const Color(0xFF17BFAE) : authPurple)), const SizedBox(width: 13),
-    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(item.title, style: const TextStyle(fontWeight: FontWeight.w700, color: authInk)), const SizedBox(height: 6), Text(_dateLabel(item.scheduledAt), style: const TextStyle(fontSize: 11, color: authMuted)), if (item.notes.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 5), child: Text(item.notes, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: authMuted)))])),
-    PopupMenuButton<String>(onSelected: (value) async { if (value == 'delete') { await ReminderApi.instance.delete(item.id); } else { await ReminderApi.instance.updateStatus(item.id, value); } await onChanged(); }, itemBuilder: (_) => [if (item.status != 'completed') const PopupMenuItem(value: 'completed', child: Text('Mark completed')), if (item.status != 'cancelled') const PopupMenuItem(value: 'cancelled', child: Text('Cancel')), const PopupMenuItem(value: 'delete', child: Text('Delete'))]),
+    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(item.title, style: const TextStyle(fontWeight: FontWeight.w700, color: authInk)), const SizedBox(height: 6), Text(_dateLabel(item.scheduledAt), style: const TextStyle(fontSize: 11, color: authMuted)), if (item.conversationTitle.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 5), child: Text('Chat: ${item.conversationTitle}', style: const TextStyle(fontSize: 11, color: authPurple, fontWeight: FontWeight.w600))), if (item.notes.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 5), child: Text(item.notes, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: authMuted)))])),
+    PopupMenuButton<String>(onSelected: (value) async {
+      if (value == 'edit') {
+        final changed=await showModalBottomSheet<bool>(context:context,isScrollControlled:true,backgroundColor:Colors.white,shape:const RoundedRectangleBorder(borderRadius:BorderRadius.vertical(top:Radius.circular(24))),builder:(_)=>_CreateReminderSheet(item:item));
+        if(changed==true)await onChanged();
+        return;
+      }
+      if (value == 'chat' && item.conversationId.isNotEmpty) { context.push('/chat/${item.conversationId}'); return; }
+      if (value == 'delete') { await ReminderApi.instance.delete(item.id); } else { await ReminderApi.instance.updateStatus(item.id, value); }
+      await onChanged();
+    }, itemBuilder: (_) => [const PopupMenuItem(value:'edit',child:Text('Edit / reschedule')),if(item.conversationId.isNotEmpty)const PopupMenuItem(value:'chat',child:Text('Open linked chat')),if (item.status != 'completed') const PopupMenuItem(value: 'completed', child: Text('Mark completed')), if (item.status != 'cancelled') const PopupMenuItem(value: 'cancelled', child: Text('Cancel')), const PopupMenuItem(value: 'delete', child: Text('Delete'))]),
   ]));
 }
 
 class _CreateReminderSheet extends StatefulWidget {
-  const _CreateReminderSheet();
+  const _CreateReminderSheet({this.item});
+  final ReminderItem? item;
   @override
   State<_CreateReminderSheet> createState() => _CreateReminderSheetState();
 }
 
 class _CreateReminderSheetState extends State<_CreateReminderSheet> {
-  final title = TextEditingController();
-  final notes = TextEditingController();
-  DateTime scheduledAt = DateTime.now().add(const Duration(hours: 1));
+  late final TextEditingController title;
+  late final TextEditingController notes;
+  late DateTime scheduledAt;
   bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    title=TextEditingController(text:widget.item?.title??'');
+    notes=TextEditingController(text:widget.item?.notes??'');
+    scheduledAt=widget.item?.scheduledAt??DateTime.now().add(const Duration(hours:1));
+  }
 
   @override
   void dispose() { title.dispose(); notes.dispose(); super.dispose(); }
@@ -87,18 +105,19 @@ class _CreateReminderSheetState extends State<_CreateReminderSheet> {
     if (scheduledAt.isBefore(DateTime.now())) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select a future date and time'))); return; }
     try {
       setState(() => saving = true);
-      await ReminderApi.instance.create(title: title.text.trim(), scheduledAt: scheduledAt, notes: notes.text.trim());
+      if(widget.item==null){await ReminderApi.instance.create(title:title.text.trim(),scheduledAt:scheduledAt,notes:notes.text.trim());}
+      else{await ReminderApi.instance.update(widget.item!.id,title:title.text.trim(),scheduledAt:scheduledAt,notes:notes.text.trim());}
       if (mounted) Navigator.pop(context, true);
-    } catch (_) { if (mounted) { setState(() => saving = false); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reminder could not be created'))); } }
+    } catch (_) { if (mounted) { setState(() => saving = false); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reminder save nahi hua. Retry karein.'))); } }
   }
 
   @override
   Widget build(BuildContext context) => Padding(padding: EdgeInsets.fromLTRB(20, 22, 20, MediaQuery.viewInsetsOf(context).bottom + 24), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Center(child: Text('Create Reminder', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: authInk))), const SizedBox(height: 22),
+    Center(child: Text(widget.item==null?'Create Reminder':'Edit Reminder', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: authInk))), const SizedBox(height: 22),
     TextField(controller: title, maxLength: 160, decoration: const InputDecoration(labelText: 'Title', prefixIcon: Icon(Icons.title))), const SizedBox(height: 8),
     InkWell(onTap: _pickDateTime, child: InputDecorator(decoration: const InputDecoration(labelText: 'Date & Time', prefixIcon: Icon(Icons.calendar_month)), child: Text(_dateLabel(scheduledAt)))), const SizedBox(height: 12),
     TextField(controller: notes, maxLines: 2, maxLength: 1000, decoration: const InputDecoration(labelText: 'Notes (optional)', prefixIcon: Icon(Icons.notes))), const SizedBox(height: 12),
-    PurpleButton(label: saving ? 'Saving...' : 'Create Reminder', onPressed: saving ? null : _save),
+    PurpleButton(label: saving ? 'Saving...' : widget.item==null?'Create Reminder':'Save Changes', onPressed: saving ? null : _save),
   ]));
 }
 

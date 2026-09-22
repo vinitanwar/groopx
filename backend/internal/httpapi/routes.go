@@ -11,6 +11,7 @@ func Register(router *gin.Engine, database *pgxpool.Pool, configuration config.C
 	db = database
 	cfg = configuration
 	initializePush()
+	startReminderScheduler()
 	registerAdminRoutes(router)
 	v1 := router.Group("/api/v1")
 	v1.GET("/health", func(c *gin.Context) {
