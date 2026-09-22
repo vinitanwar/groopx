@@ -115,6 +115,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     _AttachmentAction(icon: Icons.image, label: 'Image', onTap: () => _upload(FileType.image)),
     _AttachmentAction(icon: Icons.video_file, label: 'Video', onTap: () => _upload(FileType.video)),
     _AttachmentAction(icon: Icons.description, label: 'Document', onTap: () => _upload(FileType.any)),
+    _AttachmentAction(icon: Icons.audio_file, label: 'Audio', onTap: () => _upload(FileType.audio)),
     _AttachmentAction(icon: Icons.location_on, label: 'Location', onTap: _sendLocation),
   ]))));
 
@@ -229,13 +230,15 @@ class _AttachmentBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final url = message.attachment?['url'] as String?;
-    if (message.kind == 'image' && url != null) return ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(url, width: 220, height: 160, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fileRow(Icons.broken_image)));
+    final name=message.attachment?['file_name']?.toString()??message.text;
+    if (message.kind == 'image' && url != null) return InkWell(onTap:()=>_preview(context,url,name),child:ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(url, width: 220, height: 160, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fileRow(Icons.broken_image))));
     if(message.kind=='location'){
       final mapUrl=message.attachment?['map_url']?.toString();
       return InkWell(onTap:mapUrl==null?null:()=>launchUrl(Uri.parse(mapUrl),mode:LaunchMode.externalApplication),child:_fileRow(Icons.location_on));
     }
-    return _fileRow(message.kind == 'audio' ? Icons.play_circle : message.kind == 'video' ? Icons.video_file : Icons.description);
+    return InkWell(onTap:url==null?null:()=>_preview(context,url,name),child:_fileRow(message.kind == 'audio' ? Icons.play_circle : message.kind == 'video' ? Icons.video_file : Icons.description));
   }
+  void _preview(BuildContext context,String url,String name)=>context.push('/attachment',extra:<String,String>{'kind':message.kind,'name':name,'url':url});
   Widget _fileRow(IconData icon) => Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, color: authPurple), const SizedBox(width: 8), Flexible(child: Text(message.attachment?['file_name'] as String? ?? message.text, overflow: TextOverflow.ellipsis, style: const TextStyle(color: authInk)))]);
 }
 

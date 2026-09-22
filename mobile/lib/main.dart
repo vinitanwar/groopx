@@ -30,6 +30,7 @@ import 'package:groopx/features/profile/presentation/account_security_screen.dar
 import 'package:groopx/features/status/presentation/status_screen.dart';
 import 'package:groopx/features/groups/presentation/edit_group_screen.dart';
 import 'package:groopx/features/chat/presentation/shared_media_screen.dart';
+import 'package:groopx/features/chat/presentation/attachment_preview_screen.dart';
 import 'package:groopx/features/profile/presentation/data_storage_screen.dart';
 import 'package:groopx/features/profile/presentation/help_about_screen.dart';
 import 'package:groopx/features/profile/presentation/avatar_preview_screen.dart';
@@ -90,6 +91,7 @@ GoRouter _createRouter(String initialLocation) => GoRouter(
     GoRoute(path: '/statuses', builder: (_, __) => const StatusScreen()),
     GoRoute(path: '/calls', builder: (_, __) => const CallHistoryScreen()),
     GoRoute(path: '/chat/:id/media', builder: (_, state) => SharedMediaScreen(conversationId: state.pathParameters['id']!)),
+    GoRoute(path:'/attachment',builder:(_,state){final data=state.extra! as Map<String,String>;return AttachmentPreviewScreen(kind:data['kind']??'file',name:data['name']??'Attachment',url:data['url']??'');}),
     GoRoute(path: '/profile/storage', builder: (_, __) => const DataStorageScreen()),
     GoRoute(path: '/profile/help', builder: (_, __) => const HelpAboutScreen()),
     GoRoute(path: '/profile/avatar', builder: (_, state) {final data=state.extra! as Map<String,String>;return AvatarPreviewScreen(name:data['name']??'Profile photo',url:data['url']??'');}),
