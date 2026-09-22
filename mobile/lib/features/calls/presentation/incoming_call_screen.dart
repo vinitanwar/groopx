@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -14,17 +15,24 @@ class IncomingCallScreen extends StatefulWidget {
 
 class _IncomingCallScreenState extends State<IncomingCallScreen> {
   bool busy = false;
+  Timer? timer;
+
+  @override void initState(){super.initState();timer=Timer.periodic(const Duration(seconds:2),(_)=>_check());}
+  Future<void> _check()async{try{final value=await CallApi.instance.status(widget.callId);if(!mounted)return;if(value.status!='ringing'){timer?.cancel();if(value.status=='answered')return;ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(value.status=='missed'?'Missed call':'Call is no longer available')));context.go('/chats');}}catch(_){}}
 
   Future<void> _decline() async {
     if (busy) return;
     setState(() => busy = true);
+    timer?.cancel();
     try { await CallApi.instance.decline(widget.callId); } catch (_) {}
     if (mounted) context.go('/chats');
   }
 
   void _accept() {
-    if (!busy) context.go('/calls/${widget.video ? 'video' : 'audio'}/${widget.callId}/join');
+    if (!busy){timer?.cancel();context.go('/calls/${widget.video ? 'video' : 'audio'}/${widget.callId}/join');}
   }
+
+  @override void dispose(){timer?.cancel();super.dispose();}
 
   @override
   Widget build(BuildContext context) => PopScope(

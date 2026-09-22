@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:dio/dio.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../data/call_api.dart';
 
@@ -20,12 +22,15 @@ class _CallScreenState extends State<CallScreen> {
   String status = 'Connecting…';
   String? error;
   bool muted = false, speaker = false, camera = true, ending = false;
+  Timer? statusTimer;
 
   @override
   void initState() { super.initState(); _connect(); }
 
   Future<void> _connect() async {
     try {
+      final permissions=await <Permission>[Permission.microphone,if(widget.video)Permission.camera].request();
+      if(permissions.values.any((value)=>!value.isGranted))throw StateError('Microphone${widget.video?' and camera':''} permission required');
       final session = widget.joinExisting
           ? await CallApi.instance.join(widget.callId)
           : await CallApi.instance.start(conversationId: widget.callId, video: widget.video);
@@ -38,9 +43,12 @@ class _CallScreenState extends State<CallScreen> {
       }
       await localParticipant.setMicrophoneEnabled(true);
       if (widget.video) await localParticipant.setCameraEnabled(true);
-      if (mounted) setState(() { activeCallId = session.id; room = connectedRoom; status = 'Connected'; });
+      if (mounted) setState(() { activeCallId = session.id; room = connectedRoom; status = widget.joinExisting?'Connected':'Ringing…'; });
+      statusTimer?.cancel();statusTimer=Timer.periodic(const Duration(seconds:2),(_)=>_checkStatus());
     } catch (failure) { if (mounted) setState(() { error = _callError(failure); status = 'Connection failed'; }); }
   }
+
+  Future<void> _checkStatus()async{final id=activeCallId;if(id==null||ending)return;try{final value=await CallApi.instance.status(id);if(!mounted)return;if(value.status=='answered'){setState(()=>status=room?.remoteParticipants.isEmpty==false?'Connected':'Call answered');}else if(value.status=='declined'||value.status=='missed'||value.status=='ended'){statusTimer?.cancel();setState(()=>error=value.status=='declined'?'Call declined':value.status=='missed'?'No answer':'Call ended');await Future<void>.delayed(const Duration(seconds:2));if(mounted)_end(notifyServer:false);}}catch(_){}}
 
   String _callError(Object failure){
     if(failure is DioException){final data=failure.response?.data;if(data is Map&&data['error']!=null)return data['error'].toString();}
@@ -70,16 +78,18 @@ class _CallScreenState extends State<CallScreen> {
     if (mounted) setState(() => speaker = value);
   }
 
-  Future<void> _end() async {
+  Future<void> _end({bool notifyServer=true}) async {
     if (ending) return;
     setState(() => ending = true);
-    try { if (activeCallId != null) await CallApi.instance.end(activeCallId!); } catch (_) {}
+    statusTimer?.cancel();
+    try { if (notifyServer&&activeCallId != null) await CallApi.instance.end(activeCallId!); } catch (_) {}
     await room?.disconnect();
     if (mounted) context.pop();
   }
 
   @override
   void dispose() {
+    statusTimer?.cancel();
     room?.removeListener(_roomChanged);
     room?.disconnect();
     room?.dispose();

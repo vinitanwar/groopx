@@ -88,6 +88,7 @@ func Register(router *gin.Engine, database *pgxpool.Pool, configuration config.C
 	v1.POST("/notifications/:id/read", requireBearer(), markNotificationRead)
 	v1.POST("/calls/token", requireBearer(), createCallToken)
 	v1.GET("/calls", requireBearer(), listCalls)
+	v1.GET("/calls/:id", requireBearer(), getCallStatus)
 	v1.POST("/calls/:id/join", requireBearer(), joinCall)
 	v1.POST("/calls/:id/decline", requireBearer(), declineCall)
 	v1.POST("/calls/:id/end", requireBearer(), endCall)

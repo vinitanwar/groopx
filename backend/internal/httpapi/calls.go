@@ -26,6 +26,15 @@ func listCalls(c *gin.Context) {
 	c.JSON(http.StatusOK,gin.H{"items":items})
 }
 
+func getCallStatus(c *gin.Context) {
+	userID:=c.GetString("user_id")
+	_,_=db.Exec(c.Request.Context(),`UPDATE calls SET status='missed',ended_at=NOW() WHERE id=$1 AND status='ringing' AND started_at<NOW()-INTERVAL '60 seconds'`,c.Param("id"))
+	var status,kind string;var answeredAt,endedAt *time.Time
+	err:=db.QueryRow(c.Request.Context(),`SELECT calls.status::text,calls.kind::text,calls.answered_at,calls.ended_at FROM calls JOIN call_participants cp ON cp.call_id=calls.id WHERE calls.id=$1 AND cp.user_id=$2`,c.Param("id"),userID).Scan(&status,&kind,&answeredAt,&endedAt)
+	if err!=nil{c.JSON(http.StatusNotFound,gin.H{"error":"call not found"});return}
+	c.JSON(http.StatusOK,gin.H{"id":c.Param("id"),"status":status,"kind":kind,"answered_at":answeredAt,"ended_at":endedAt})
+}
+
 func createCallToken(c *gin.Context) {
 	if !liveKitConfigured() { c.JSON(http.StatusServiceUnavailable, gin.H{"error":"LiveKit is not configured"}); return }
 	userID := c.GetString("user_id")
@@ -35,6 +44,9 @@ func createCallToken(c *gin.Context) {
 	}
 	if c.ShouldBindJSON(&input) != nil { c.JSON(http.StatusBadRequest, gin.H{"error":"invalid call request"}); return }
 	if !isConversationMember(c, input.ConversationID, userID) { c.JSON(http.StatusForbidden, gin.H{"error":"not a conversation member"}); return }
+	_,_=db.Exec(c.Request.Context(),`UPDATE calls SET status='missed',ended_at=NOW() WHERE conversation_id=$1 AND status='ringing' AND started_at<NOW()-INTERVAL '60 seconds'`,input.ConversationID)
+	var activeCallID string
+	if db.QueryRow(c.Request.Context(),`SELECT id::text FROM calls WHERE conversation_id=$1 AND status IN ('ringing','answered') AND started_at>NOW()-INTERVAL '2 hours' ORDER BY started_at DESC LIMIT 1`,input.ConversationID).Scan(&activeCallID)==nil{c.JSON(http.StatusConflict,gin.H{"error":"an active call already exists","call_id":activeCallID});return}
 	var blocked bool
 	_ = db.QueryRow(c.Request.Context(),`SELECT EXISTS(SELECT 1 FROM conversations c JOIN conversation_members other ON other.conversation_id=c.id AND other.user_id<>$2 JOIN user_blocks b ON (b.blocker_id=$2 AND b.blocked_id=other.user_id) OR (b.blocker_id=other.user_id AND b.blocked_id=$2) WHERE c.id=$1 AND c.kind='direct')`,input.ConversationID,userID).Scan(&blocked)
 	if blocked { c.JSON(http.StatusForbidden,gin.H{"error":"call unavailable because communication is blocked"}); return }
@@ -46,7 +58,8 @@ func createCallToken(c *gin.Context) {
 	if err == nil { _, err = tx.Exec(ctx, `UPDATE call_participants SET joined_at=NOW() WHERE call_id=$1 AND user_id=$2`, callID, userID) }
 	if err != nil || tx.Commit(ctx) != nil { c.JSON(http.StatusInternalServerError, gin.H{"error":"call could not be created"}); return }
 	token, err := liveKitToken(room, userID); if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error":"call token could not be created"}); return }
-	notifyConversation(input.ConversationID,userID,"call","Incoming call",input.Kind+" call",map[string]any{"conversation_id":input.ConversationID,"call_id":callID,"kind":input.Kind})
+	var caller string;_ = db.QueryRow(c.Request.Context(),`SELECT COALESCE(full_name,username,phone,'GroopX user') FROM users WHERE id=$1`,userID).Scan(&caller)
+	notifyConversation(input.ConversationID,userID,"call","Incoming call",input.Kind+" call",map[string]any{"conversation_id":input.ConversationID,"call_id":callID,"kind":input.Kind,"caller":caller})
 	c.JSON(http.StatusCreated, gin.H{"id":callID,"conversation_id":input.ConversationID,"kind":input.Kind,"status":"ringing","url":os.Getenv("LIVEKIT_URL"),"token":token,"room":room})
 }
 

@@ -8,6 +8,12 @@ class CallSession {
   final String id, url, token, room, kind;
 }
 
+class CallState {
+  const CallState({required this.status,required this.kind});
+  factory CallState.fromJson(Map<String,dynamic> json)=>CallState(status:json['status'] as String? ?? 'ended',kind:json['kind'] as String? ?? 'audio');
+  final String status,kind;
+}
+
 class CallHistoryItem {
   const CallHistoryItem({required this.id,required this.conversationId,required this.title,required this.kind,required this.status,required this.startedAt,required this.avatarUrl});
   factory CallHistoryItem.fromJson(Map<String,dynamic> json)=>CallHistoryItem(id:json['id'] as String,conversationId:json['conversation_id'] as String,title:json['title'] as String? ?? 'GroopX call',kind:json['kind'] as String? ?? 'audio',status:json['status'] as String? ?? 'ended',startedAt:DateTime.parse(json['started_at'] as String).toLocal(),avatarUrl:json['avatar_url'] as String? ?? '');
@@ -48,6 +54,7 @@ class CallApi {
     final response=await _dio.get<Map<String,dynamic>>('/calls');
     return (response.data?['items'] as List<dynamic>? ?? const []).map((item)=>CallHistoryItem.fromJson(item as Map<String,dynamic>)).toList();
   }
+  Future<CallState> status(String callId)async{final response=await _dio.get<Map<String,dynamic>>('/calls/$callId');return CallState.fromJson(response.data!);}
   Future<void> end(String callId) => _dio.post('/calls/$callId/end');
   Future<void> decline(String callId) => _dio.post('/calls/$callId/decline');
 }
