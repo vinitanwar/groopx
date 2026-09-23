@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:http_parser/http_parser.dart';
 
 import '../../auth/data/auth_api.dart';
 
@@ -34,11 +35,18 @@ class MediaApi {
     if (file.path == null) throw StateError('The selected file is unavailable');
     if (file.size > 200 * 1024 * 1024) throw StateError('Maximum file size is 200 MB');
     final contentType = _contentType(file.name);
-    final presign = await _dio.post<Map<String, dynamic>>('/media/presign', data: {'file_name': file.name, 'content_type': contentType, 'size': file.size});
-    final data = presign.data ?? <String, dynamic>{};
-    final uploadClient = Dio(BaseOptions(sendTimeout: const Duration(minutes: 5), receiveTimeout: const Duration(minutes: 5)));
-    await uploadClient.put<void>(data['upload_url'] as String, data: File(file.path!).openRead(), options: Options(headers: {'Content-Type': contentType, 'Content-Length': file.size}), onSendProgress: (sent, total) => onProgress(total <= 0 ? 0 : sent / total));
-    await _dio.post('/media/complete', data: {'conversation_id': conversationId, 'object_key': data['object_key'], 'file_name': file.name, 'content_type': contentType, 'size': file.size});
+    try {
+      final presign = await _dio.post<Map<String, dynamic>>('/media/presign', data: {'file_name': file.name, 'content_type': contentType, 'size': file.size});
+      final data = presign.data ?? <String, dynamic>{};
+      final uploadClient = Dio(BaseOptions(sendTimeout: const Duration(minutes: 5), receiveTimeout: const Duration(minutes: 5)));
+      await uploadClient.put<void>(data['upload_url'] as String, data: File(file.path!).openRead(), options: Options(headers: {'Content-Type': contentType, 'Content-Length': file.size}), onSendProgress: (sent, total) => onProgress(total <= 0 ? 0 : sent / total));
+      await _dio.post('/media/complete', data: {'conversation_id': conversationId, 'object_key': data['object_key'], 'file_name': file.name, 'content_type': contentType, 'size': file.size});
+    } on DioException catch (failure) {
+      if (failure.response?.statusCode != 503) rethrow;
+      if (file.size > 25 * 1024 * 1024) throw StateError('External storage configure hone tak maximum attachment size 25 MB hai');
+      final form=FormData.fromMap({'conversation_id':conversationId,'file':await MultipartFile.fromFile(file.path!,filename:file.name,contentType:MediaType.parse(contentType))});
+      await _dio.post('/media/upload',data:form,options:Options(sendTimeout:const Duration(minutes:5),receiveTimeout:const Duration(minutes:5)),onSendProgress:(sent,total)=>onProgress(total<=0?0:sent/total));
+    }
     onProgress(1);
   }
 

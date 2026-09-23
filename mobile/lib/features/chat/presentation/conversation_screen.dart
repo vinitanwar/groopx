@@ -108,6 +108,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
   String _uploadError(Object failure){
     if(failure is DioException){final data=failure.response?.data;if(data is Map&&data['error']!=null)return data['error'].toString();}
+    if(failure is StateError)return failure.message.toString();
     return 'Upload failed. Internet check karke retry karein.';
   }
 

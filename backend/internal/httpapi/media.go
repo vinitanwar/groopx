@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -68,6 +69,73 @@ func completeMediaMessage(c *gin.Context) {
 	broadcast(input.ConversationID,userID,gin.H{"type":"message","id":messageID,"conversation_id":input.ConversationID,"sender_id":userID,"text":input.FileName,"kind":kind,"attachment":metadata,"status":status,"created_at":createdAt})
 	notifyConversation(input.ConversationID,userID,"media","New attachment",input.FileName,map[string]any{"conversation_id":input.ConversationID,"message_id":messageID,"kind":kind})
 	c.JSON(http.StatusCreated,gin.H{"id":messageID,"kind":kind,"attachment":metadata,"status":status,"created_at":createdAt,"mine":true,"text":input.FileName})
+}
+
+func uploadMediaMessage(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 27*1024*1024)
+	conversationID := strings.TrimSpace(c.PostForm("conversation_id"))
+	userID := c.GetString("user_id")
+	if conversationID == "" || !isConversationMember(c, conversationID, userID) {
+		c.JSON(http.StatusForbidden, gin.H{"error":"not a conversation member"}); return
+	}
+	var otherID string
+	if db.QueryRow(c.Request.Context(), `SELECT cm.user_id::text FROM conversations c JOIN conversation_members cm ON cm.conversation_id=c.id AND cm.user_id<>$2 WHERE c.id=$1 AND c.kind='direct' LIMIT 1`, conversationID, userID).Scan(&otherID) == nil && usersBlocked(userID, otherID) {
+		c.JSON(http.StatusForbidden, gin.H{"error":"media unavailable because communication is blocked"}); return
+	}
+	fileHeader, err := c.FormFile("file")
+	if err != nil || fileHeader.Size <= 0 || fileHeader.Size > 25*1024*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error":"Without external storage, attachment must be smaller than 25 MB"}); return
+	}
+	file, err := fileHeader.Open()
+	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"error":"attachment could not be read"}); return }
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, 25*1024*1024+1))
+	if err != nil || len(data) == 0 || len(data) > 25*1024*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error":"Without external storage, attachment must be smaller than 25 MB"}); return
+	}
+	fileName := unsafeFileName.ReplaceAllString(path.Base(fileHeader.Filename), "_")
+	if fileName == "" { fileName = "attachment" }
+	contentType := strings.TrimSpace(fileHeader.Header.Get("Content-Type"))
+	if contentType == "" || contentType == "application/octet-stream" { contentType = http.DetectContentType(data) }
+	if len(contentType) > 120 { contentType = "application/octet-stream" }
+	kind := "file"
+	if strings.HasPrefix(contentType,"image/") { kind="image" } else if strings.HasPrefix(contentType,"video/") { kind="video" } else if strings.HasPrefix(contentType,"audio/") { kind="audio" }
+
+	ctx := c.Request.Context()
+	tx, err := db.Begin(ctx)
+	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error":"media message could not be saved"}); return }
+	defer tx.Rollback(ctx)
+	random := make([]byte,16)
+	if _,err=rand.Read(random);err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"media message could not be saved"});return}
+	objectKey := "database/"+hex.EncodeToString(random)+"-"+fileName
+	var mediaID string
+	err = tx.QueryRow(ctx, `INSERT INTO media_objects(owner_id,object_key,file_name,content_type,size_bytes) VALUES($1,$2,$3,$4,$5) RETURNING id::text`, userID, objectKey, fileName, contentType, len(data)).Scan(&mediaID)
+	if err == nil { _,err=tx.Exec(ctx, `INSERT INTO media_blobs(media_id,file_data) VALUES($1,$2)`, mediaID, data) }
+	scheme:=c.GetHeader("X-Forwarded-Proto");if scheme==""{scheme="http";if c.Request.TLS!=nil{scheme="https"}}
+	publicURL:=scheme+"://"+c.Request.Host+"/api/v1/media/files/"+mediaID
+	metadata:=gin.H{"file_name":fileName,"content_type":contentType,"size":len(data),"object_key":objectKey,"url":publicURL,"duration_ms":0}
+	metadataJSON,_:=json.Marshal(metadata)
+	status:="sent";if onlineRecipients(conversationID,userID)>0||isConversationPeerOnline(conversationID,userID){status="delivered"}
+	var messageID string;var createdAt time.Time
+	if err==nil{err=tx.QueryRow(ctx,`INSERT INTO messages(conversation_id,sender_id,kind,body,metadata,status) VALUES($1,$2,$3,$4,$5,$6) RETURNING id::text,created_at`,conversationID,userID,kind,fileName,metadataJSON,status).Scan(&messageID,&createdAt)}
+	if err==nil{_,err=tx.Exec(ctx,`INSERT INTO message_attachments(message_id,media_id) VALUES($1,$2)`,messageID,mediaID)}
+	if err==nil{_,err=tx.Exec(ctx,`UPDATE conversations SET last_message_at=$2,updated_at=NOW() WHERE id=$1`,conversationID,createdAt)}
+	if err==nil{_,err=tx.Exec(ctx,`UPDATE conversation_members SET hidden_at=NULL WHERE conversation_id=$1 AND user_id<>$2`,conversationID,userID)}
+	if err!=nil||tx.Commit(ctx)!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"media message could not be saved"});return}
+	broadcast(conversationID,userID,gin.H{"type":"message","id":messageID,"conversation_id":conversationID,"sender_id":userID,"text":fileName,"kind":kind,"attachment":metadata,"status":status,"created_at":createdAt})
+	notifyConversation(conversationID,userID,"media","New attachment",fileName,map[string]any{"conversation_id":conversationID,"message_id":messageID,"kind":kind})
+	c.JSON(http.StatusCreated,gin.H{"id":messageID,"kind":kind,"attachment":metadata,"status":status,"created_at":createdAt,"mine":true,"text":fileName})
+}
+
+func getStoredMedia(c *gin.Context) {
+	var contentType,fileName string;var data []byte;var createdAt time.Time
+	err:=db.QueryRow(c.Request.Context(),`SELECT m.content_type,m.file_name,b.file_data,m.created_at FROM media_objects m JOIN media_blobs b ON b.media_id=m.id WHERE m.id=$1`,c.Param("mediaId")).Scan(&contentType,&fileName,&data,&createdAt)
+	if err!=nil{c.Status(http.StatusNotFound);return}
+	disposition:="attachment";if strings.HasPrefix(contentType,"image/")||strings.HasPrefix(contentType,"video/")||strings.HasPrefix(contentType,"audio/"){disposition="inline"}
+	c.Header("Content-Disposition",disposition+`; filename="`+unsafeFileName.ReplaceAllString(fileName,"_")+`"`)
+	c.Header("Cache-Control","public, max-age=86400")
+	c.Header("Content-Type",contentType)
+	http.ServeContent(c.Writer,c.Request,fileName,createdAt,bytes.NewReader(data))
 }
 
 func updateAvatar(c *gin.Context) {
