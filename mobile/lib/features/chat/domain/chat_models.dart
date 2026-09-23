@@ -71,7 +71,7 @@ class ReplyPreview {
 }
 
 class ChatMessage {
-  const ChatMessage({required this.id, required this.text, required this.time, required this.mine, this.status = 'sent', this.kind = 'text', this.attachment, this.edited = false, this.reactions = const [], this.reply});
+  const ChatMessage({required this.id, required this.text, required this.time, required this.mine, this.status = 'sent', this.kind = 'text', this.attachment, this.edited = false, this.starred = false, this.reactions = const [], this.reply});
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     final rawTime = json['created_at'] as String?;
     final date = rawTime == null ? null : DateTime.tryParse(rawTime)?.toLocal();
@@ -84,6 +84,7 @@ class ChatMessage {
       kind: json['kind'] as String? ?? 'text',
       attachment: json['attachment'] as Map<String, dynamic>?,
       edited: json['edited'] as bool? ?? false,
+      starred: json['starred'] as bool? ?? false,
       reactions: (json['reactions'] as List<dynamic>? ?? const []).map((item) => MessageReaction.fromJson(item as Map<String, dynamic>)).toList(),
       reply: json['reply'] is Map<String, dynamic> ? ReplyPreview.fromJson(json['reply'] as Map<String, dynamic>) : null,
     );
@@ -96,6 +97,7 @@ class ChatMessage {
   final String kind;
   final Map<String, dynamic>? attachment;
   final bool edited;
+  final bool starred;
   final List<MessageReaction> reactions;
   final ReplyPreview? reply;
   bool get isAttachment => kind != 'text' && attachment != null;

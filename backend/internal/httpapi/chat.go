@@ -131,7 +131,8 @@ func listMessages(c *gin.Context) {
 	rows, err := db.Query(c.Request.Context(), `SELECT messages.id::text, COALESCE(messages.sender_id::text,''), messages.body, messages.kind::text, messages.metadata, messages.status::text, messages.created_at, messages.edited_at,
 		COALESCE((SELECT jsonb_agg(jsonb_build_object('emoji',reaction.emoji,'count',reaction.total,'mine',reaction.mine)) FROM
 			(SELECT emoji,COUNT(*)::int total,BOOL_OR(user_id=$2) mine FROM message_reactions WHERE message_id=messages.id GROUP BY emoji) reaction),'[]'::jsonb),
-		messages.reply_to_id::text, reply.body, COALESCE(reply.sender_id::text,'')
+		messages.reply_to_id::text, reply.body, COALESCE(reply.sender_id::text,''),
+		EXISTS(SELECT 1 FROM message_stars star WHERE star.message_id=messages.id AND star.user_id=$2)
 		FROM messages LEFT JOIN messages reply ON reply.id=messages.reply_to_id
 		WHERE messages.conversation_id=$1 AND messages.deleted_at IS NULL AND (messages.created_at,messages.id)<($3,$4::uuid)
 		ORDER BY messages.created_at DESC,messages.id DESC LIMIT 50`, conversationID, userID, beforeTime, beforeID)
@@ -141,10 +142,10 @@ func listMessages(c *gin.Context) {
 	var oldestTime time.Time; var oldestID string
 	for rows.Next() {
 		var id, senderID, body, kind, status string; var metadata, reactions []byte; var createdAt time.Time; var editedAt *time.Time
-		var replyID, replyText, replySenderID *string
-		if rows.Scan(&id, &senderID, &body, &kind, &metadata, &status, &createdAt, &editedAt, &reactions, &replyID, &replyText, &replySenderID) != nil { continue }
+		var replyID, replyText, replySenderID *string;var starred bool
+		if rows.Scan(&id, &senderID, &body, &kind, &metadata, &status, &createdAt, &editedAt, &reactions, &replyID, &replyText, &replySenderID,&starred) != nil { continue }
 		var reactionItems []map[string]any; _ = json.Unmarshal(reactions, &reactionItems)
-		item := gin.H{"id": id, "sender_id": senderID, "text": body, "kind": kind, "status": status, "created_at": createdAt, "mine": senderID == userID, "edited": editedAt != nil, "reactions": reactionItems}
+		item := gin.H{"id": id, "sender_id": senderID, "text": body, "kind": kind, "status": status, "created_at": createdAt, "mine": senderID == userID, "edited": editedAt != nil, "reactions": reactionItems,"starred":starred}
 		if replyID != nil { item["reply"] = gin.H{"id":*replyID,"text":replyText,"sender_id":replySenderID,"mine":replySenderID != nil && *replySenderID == userID} }
 		if kind != "text" { var attachment map[string]any; if json.Unmarshal(metadata, &attachment) == nil { item["attachment"] = attachment } }
 		items = append(items, item)
@@ -165,6 +166,21 @@ func searchMessages(c *gin.Context) {
 	for rows.Next(){var id,senderID,body,kind,status string;var createdAt time.Time;var editedAt *time.Time;if rows.Scan(&id,&senderID,&body,&kind,&status,&createdAt,&editedAt)==nil{items=append(items,gin.H{"id":id,"sender_id":senderID,"text":body,"kind":kind,"status":status,"created_at":createdAt,"mine":senderID==userID,"edited":editedAt!=nil})}}
 	c.JSON(http.StatusOK,gin.H{"items":items})
 }
+
+func listStarredMessages(c *gin.Context) {
+	conversationID,userID:=c.Param("id"),c.GetString("user_id")
+	if !isConversationMember(c,conversationID,userID){c.JSON(http.StatusForbidden,gin.H{"error":"not a conversation member"});return}
+	rows,err:=db.Query(c.Request.Context(),`SELECT m.id::text,COALESCE(m.sender_id::text,''),m.body,m.kind::text,m.metadata,m.status::text,m.created_at,m.edited_at
+		FROM message_stars s JOIN messages m ON m.id=s.message_id
+		WHERE s.user_id=$1 AND m.conversation_id=$2 AND m.deleted_at IS NULL ORDER BY s.created_at DESC LIMIT 200`,userID,conversationID)
+	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"starred messages could not be loaded"});return};defer rows.Close()
+	items:=make([]gin.H,0)
+	for rows.Next(){var id,senderID,body,kind,status string;var metadata []byte;var createdAt time.Time;var editedAt *time.Time;if rows.Scan(&id,&senderID,&body,&kind,&metadata,&status,&createdAt,&editedAt)!=nil{continue};item:=gin.H{"id":id,"sender_id":senderID,"text":body,"kind":kind,"status":status,"created_at":createdAt,"mine":senderID==userID,"edited":editedAt!=nil,"starred":true};if kind!="text"{var attachment map[string]any;if json.Unmarshal(metadata,&attachment)==nil{item["attachment"]=attachment}};items=append(items,item)}
+	c.JSON(http.StatusOK,gin.H{"items":items})
+}
+
+func starMessage(c *gin.Context){userID:=c.GetString("user_id");result,err:=db.Exec(c.Request.Context(),`INSERT INTO message_stars(message_id,user_id) SELECT m.id,$2 FROM messages m JOIN conversation_members cm ON cm.conversation_id=m.conversation_id AND cm.user_id=$2 WHERE m.id=$1 AND m.deleted_at IS NULL ON CONFLICT DO NOTHING`,c.Param("id"),userID);if err!=nil||result.RowsAffected()==0{var exists bool;_ = db.QueryRow(c.Request.Context(),`SELECT EXISTS(SELECT 1 FROM message_stars WHERE message_id=$1 AND user_id=$2)`,c.Param("id"),userID).Scan(&exists);if !exists{c.JSON(http.StatusNotFound,gin.H{"error":"message not found"});return}};c.Status(http.StatusNoContent)}
+func unstarMessage(c *gin.Context){_,err:=db.Exec(c.Request.Context(),`DELETE FROM message_stars WHERE message_id=$1 AND user_id=$2`,c.Param("id"),c.GetString("user_id"));if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"message could not be unstarred"});return};c.Status(http.StatusNoContent)}
 
 func markConversationRead(c *gin.Context) {
 	conversationID, userID := c.Param("id"), c.GetString("user_id")

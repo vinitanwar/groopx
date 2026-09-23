@@ -8,6 +8,7 @@ import 'package:groopx/features/auth/presentation/profile_setup_screen.dart';
 import 'package:groopx/features/chat/presentation/chat_list_screen.dart';
 import 'package:groopx/features/chat/presentation/conversation_screen.dart';
 import 'package:groopx/features/chat/presentation/message_search_screen.dart';
+import 'package:groopx/features/chat/presentation/starred_messages_screen.dart';
 import 'package:groopx/features/groups/presentation/create_group_screen.dart';
 import 'package:groopx/features/groups/presentation/group_info_screen.dart';
 import 'package:groopx/features/groups/presentation/join_group_screen.dart';
@@ -72,6 +73,7 @@ GoRouter _createRouter(String initialLocation) => GoRouter(
     GoRoute(path: '/chats', builder: (_, __) => const ChatListScreen()),
     GoRoute(path: '/chat/:id', builder: (_, state) => ConversationScreen(conversationId: state.pathParameters['id']!)),
     GoRoute(path: '/chat/:id/search', builder: (_, state) => MessageSearchScreen(conversationId: state.pathParameters['id']!)),
+    GoRoute(path: '/chat/:id/starred', builder: (_, state) => StarredMessagesScreen(conversationId: state.pathParameters['id']!)),
     GoRoute(path: '/groups/new', builder: (_, __) => const CreateGroupScreen()),
     GoRoute(path: '/groups/:id', builder: (_, state) => GroupInfoScreen(groupId: state.pathParameters['id']!)),
     GoRoute(path: '/groups/:id/edit', builder: (_, state) => EditGroupScreen(groupId: state.pathParameters['id']!)),
