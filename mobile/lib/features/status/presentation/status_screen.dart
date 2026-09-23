@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
+import 'package:dio/dio.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/groopx_ui.dart';
@@ -11,16 +12,17 @@ import '../data/status_api.dart';
 const _purple=Color(0xFF6335FF),_ink=Color(0xFF080C25),_muted=Color(0xFF687086);
 
 class StatusScreen extends StatefulWidget{const StatusScreen({super.key});@override State<StatusScreen> createState()=>_StatusScreenState();}
-class _StatusScreenState extends State<StatusScreen>{List<StatusItem> items=const[];bool loading=true;String? error;
+class _StatusScreenState extends State<StatusScreen>{List<StatusItem> items=const[];bool loading=true,uploading=false;double uploadProgress=0;String? error;
   @override void initState(){super.initState();_load();}
   Future<void> _load()async{setState((){loading=true;error=null;});try{final value=await StatusApi.instance.list();if(mounted)setState(()=>items=value);}catch(_){if(mounted)setState(()=>error='Statuses load nahi hue');}finally{if(mounted)setState(()=>loading=false);}}
-  Future<void> _create(bool video)async{final caption=await showDialog<String>(context:context,builder:(context){final controller=TextEditingController();return AlertDialog(title:Text(video?'Add video status':'Add photo status'),content:TextField(controller:controller,maxLength:500,decoration:const InputDecoration(hintText:'Caption (optional)')),actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(context,controller.text.trim()),child:const Text('Choose media'))]);});if(caption==null)return;try{final done=await StatusApi.instance.pickAndUpload(video:video,caption:caption);if(done)await _load();}catch(_){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Status upload nahi hua')));}}
+  Future<void> _create(bool video)async{if(uploading)return;final caption=await showDialog<String>(context:context,builder:(context){final controller=TextEditingController();return AlertDialog(title:Text(video?'Add video status':'Add photo status'),content:TextField(controller:controller,maxLength:500,decoration:const InputDecoration(hintText:'Caption (optional)')),actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(context,controller.text.trim()),child:const Text('Choose media'))]);});if(caption==null)return;try{setState((){uploading=true;uploadProgress=0;});final done=await StatusApi.instance.pickAndUpload(video:video,caption:caption,onProgress:(value){if(mounted)setState(()=>uploadProgress=value);});if(done)await _load();}catch(failure){if(mounted){String message='Status upload nahi hua';if(failure is StateError)message=failure.message.toString();if(failure is DioException&&failure.response?.data is Map&&(failure.response!.data as Map)['error']!=null)message=(failure.response!.data as Map)['error'].toString();ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(message)));}}finally{if(mounted)setState(()=>uploading=false);}}
   @override Widget build(BuildContext context)=>Scaffold(
     backgroundColor:AppColors.background,
     appBar:AppBar(
       title:const Text('Status'),
       leading:IconButton(onPressed:()=>context.go('/chats'),icon:const Icon(Icons.arrow_back)),
       actions:[PopupMenuButton<bool>(
+        enabled:!uploading,
         tooltip:'Add status',
         icon:const Icon(Icons.add_circle_outline,color:_purple),
         onSelected:_create,
@@ -30,6 +32,7 @@ class _StatusScreenState extends State<StatusScreen>{List<StatusItem> items=cons
         ],
       )],
     ),
+    bottomNavigationBar:uploading?SafeArea(child:LinearProgressIndicator(value:uploadProgress>0?uploadProgress:null,color:_purple,minHeight:5)):null,
     body:GroopXBackground(child:loading
       ?const Center(child:CircularProgressIndicator(color:_purple))
       :error!=null

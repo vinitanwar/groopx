@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http_parser/http_parser.dart';
 
 import '../../auth/data/auth_api.dart';
 
@@ -28,12 +29,20 @@ class StatusApi {
   final ImagePicker _picker=ImagePicker();
 
   Future<List<StatusItem>> list()async{final response=await _dio.get<Map<String,dynamic>>('/statuses');return (response.data?['items'] as List<dynamic>? ?? const []).map((item)=>StatusItem.fromJson(item as Map<String,dynamic>)).toList();}
-  Future<bool> pickAndUpload({required bool video,String caption=''})async{
+  Future<bool> pickAndUpload({required bool video,String caption='',void Function(double)? onProgress})async{
     final XFile? picked=video?await _picker.pickVideo(source:ImageSource.gallery,maxDuration:const Duration(seconds:30)):await _picker.pickImage(source:ImageSource.gallery,imageQuality:85,maxWidth:1920);
     if(picked==null)return false;final file=File(picked.path);final size=await file.length();if(size>200*1024*1024)throw StateError('Status file 200 MB se chhoti honi chahiye');final contentType=_contentType(picked.name,video);
-    final presign=await _dio.post<Map<String,dynamic>>('/media/presign',data:{'file_name':picked.name,'content_type':contentType,'size':size});final uploadURL=presign.data?['upload_url']?.toString();final objectKey=presign.data?['object_key']?.toString();if(uploadURL==null||objectKey==null)throw StateError('Upload prepare nahi hua');
-    await Dio().put<void>(uploadURL,data:file.openRead(),options:Options(headers:{'Content-Type':contentType,'Content-Length':size}));
-    await _dio.post('/statuses',data:{'object_key':objectKey,'file_name':picked.name,'content_type':contentType,'size':size,'caption':caption});return true;
+    try{
+      final presign=await _dio.post<Map<String,dynamic>>('/media/presign',data:{'file_name':picked.name,'content_type':contentType,'size':size});final uploadURL=presign.data?['upload_url']?.toString();final objectKey=presign.data?['object_key']?.toString();if(uploadURL==null||objectKey==null)throw StateError('Upload prepare nahi hua');
+      await Dio().put<void>(uploadURL,data:file.openRead(),options:Options(headers:{'Content-Type':contentType,'Content-Length':size}),onSendProgress:(sent,total)=>onProgress?.call(total<=0?0:sent/total));
+      await _dio.post('/statuses',data:{'object_key':objectKey,'file_name':picked.name,'content_type':contentType,'size':size,'caption':caption});
+    }on DioException catch(failure){
+      if(failure.response?.statusCode!=503)rethrow;
+      if(size>25*1024*1024)throw StateError('External storage configure hone tak status maximum 25 MB ho sakta hai');
+      final form=FormData.fromMap({'caption':caption,'file':await MultipartFile.fromFile(picked.path,filename:picked.name,contentType:MediaType.parse(contentType))});
+      await _dio.post('/statuses/upload',data:form,options:Options(sendTimeout:const Duration(minutes:5),receiveTimeout:const Duration(minutes:5)),onSendProgress:(sent,total)=>onProgress?.call(total<=0?0:sent/total));
+    }
+    onProgress?.call(1);return true;
   }
   Future<void> viewed(String id)=>_dio.post('/statuses/$id/view');
   Future<List<StatusViewerItem>> viewers(String id)async{final response=await _dio.get<Map<String,dynamic>>('/statuses/$id/views');return(response.data?['items']as List<dynamic>? ?? const[]).map((item)=>StatusViewerItem.fromJson(item as Map<String,dynamic>)).toList();}

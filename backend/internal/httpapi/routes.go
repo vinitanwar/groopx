@@ -80,6 +80,7 @@ func Register(router *gin.Engine, database *pgxpool.Pool, configuration config.C
 	v1.POST("/backups/:id/restore", requireBearer(), restoreBackup)
 	v1.GET("/statuses", requireBearer(), listStatuses)
 	v1.POST("/statuses", requireBearer(), createStatus)
+	v1.POST("/statuses/upload", requireBearer(), uploadStatus)
 	v1.POST("/statuses/:id/view", requireBearer(), viewStatus)
 	v1.GET("/statuses/:id/views", requireBearer(), listStatusViewers)
 	v1.DELETE("/statuses/:id", requireBearer(), deleteStatus)

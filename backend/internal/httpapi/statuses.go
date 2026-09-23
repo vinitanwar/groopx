@@ -1,7 +1,11 @@
 package httpapi
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"io"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -23,8 +27,33 @@ func createStatus(c *gin.Context) {
 	c.JSON(http.StatusCreated,gin.H{"id":statusID,"media_url":publicURL,"media_type":kind,"caption":input.Caption,"created_at":createdAt,"expires_at":expiresAt,"mine":true,"viewed":true})
 }
 
+func uploadStatus(c *gin.Context) {
+	c.Request.Body=http.MaxBytesReader(c.Writer,c.Request.Body,27*1024*1024)
+	fileHeader,err:=c.FormFile("file")
+	if err!=nil||fileHeader.Size<=0||fileHeader.Size>25*1024*1024{c.JSON(http.StatusBadRequest,gin.H{"error":"Without external storage, status must be smaller than 25 MB"});return}
+	file,err:=fileHeader.Open();if err!=nil{c.JSON(http.StatusBadRequest,gin.H{"error":"status media could not be read"});return};defer file.Close()
+	data,err:=io.ReadAll(io.LimitReader(file,25*1024*1024+1));if err!=nil||len(data)==0||len(data)>25*1024*1024{c.JSON(http.StatusBadRequest,gin.H{"error":"Without external storage, status must be smaller than 25 MB"});return}
+	fileName:=unsafeFileName.ReplaceAllString(path.Base(fileHeader.Filename),"_");if fileName==""{fileName="status"}
+	contentType:=strings.TrimSpace(fileHeader.Header.Get("Content-Type"));if contentType==""||contentType=="application/octet-stream"{contentType=http.DetectContentType(data)}
+	kind:="";if strings.HasPrefix(contentType,"image/"){kind="image"}else if strings.HasPrefix(contentType,"video/"){kind="video"}
+	if kind==""{c.JSON(http.StatusBadRequest,gin.H{"error":"status must be an image or video"});return}
+	caption:=strings.TrimSpace(c.PostForm("caption"));if len([]rune(caption))>500{c.JSON(http.StatusBadRequest,gin.H{"error":"caption is too long"});return}
+	random:=make([]byte,16);if _,err=rand.Read(random);err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"status could not be saved"});return}
+	objectKey:="database/statuses/"+hex.EncodeToString(random)+"-"+fileName
+	ctx:=c.Request.Context();tx,err:=db.Begin(ctx);if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"status could not be saved"});return};defer tx.Rollback(ctx)
+	userID:=c.GetString("user_id");var mediaID,statusID string;var createdAt,expiresAt time.Time
+	err=tx.QueryRow(ctx,`INSERT INTO media_objects(owner_id,object_key,file_name,content_type,size_bytes) VALUES($1,$2,$3,$4,$5) RETURNING id::text`,userID,objectKey,fileName,contentType,len(data)).Scan(&mediaID)
+	if err==nil{_,err=tx.Exec(ctx,`INSERT INTO media_blobs(media_id,file_data) VALUES($1,$2)`,mediaID,data)}
+	scheme:=c.GetHeader("X-Forwarded-Proto");if scheme==""{scheme="http";if c.Request.TLS!=nil{scheme="https"}}
+	publicURL:=scheme+"://"+c.Request.Host+"/api/v1/media/files/"+mediaID
+	if err==nil{err=tx.QueryRow(ctx,`INSERT INTO statuses(user_id,media_id,media_url,media_type,caption) VALUES($1,$2,$3,$4,NULLIF($5,'')) RETURNING id::text,created_at,expires_at`,userID,mediaID,publicURL,kind,caption).Scan(&statusID,&createdAt,&expiresAt)}
+	if err!=nil||tx.Commit(ctx)!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"status could not be saved"});return}
+	c.JSON(http.StatusCreated,gin.H{"id":statusID,"media_url":publicURL,"media_type":kind,"caption":caption,"created_at":createdAt,"expires_at":expiresAt,"mine":true,"viewed":true})
+}
+
 func listStatuses(c *gin.Context) {
 	userID:=c.GetString("user_id")
+	_,_=db.Exec(c.Request.Context(),`WITH expired AS (DELETE FROM statuses WHERE expires_at<=NOW() RETURNING media_id) DELETE FROM media_objects WHERE id IN (SELECT media_id FROM expired)`)
 	rows,err:=db.Query(c.Request.Context(),`SELECT s.id::text,s.user_id::text,COALESCE(u.full_name,u.username,'GroopX user'),COALESCE(u.avatar_url,''),s.media_url,s.media_type,s.caption,s.created_at,s.expires_at,(s.user_id=$1),EXISTS(SELECT 1 FROM status_views v WHERE v.status_id=s.id AND v.user_id=$1),(SELECT COUNT(*) FROM status_views v WHERE v.status_id=s.id)
 		FROM statuses s JOIN users u ON u.id=s.user_id WHERE s.expires_at>NOW() AND (s.user_id=$1 OR EXISTS(SELECT 1 FROM contacts c WHERE c.owner_id=$1 AND c.contact_user_id=s.user_id)) AND NOT EXISTS(SELECT 1 FROM user_blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=s.user_id) OR (b.blocker_id=s.user_id AND b.blocked_id=$1)) ORDER BY (s.user_id=$1) DESC,s.created_at DESC`,userID)
 	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"statuses could not be loaded"});return};defer rows.Close()
@@ -43,4 +72,4 @@ func listStatusViewers(c *gin.Context){
 	c.JSON(http.StatusOK,gin.H{"items":items})
 }
 
-func deleteStatus(c *gin.Context){result,err:=db.Exec(c.Request.Context(),`DELETE FROM statuses WHERE id=$1 AND user_id=$2`,c.Param("id"),c.GetString("user_id"));if err!=nil||result.RowsAffected()==0{c.JSON(http.StatusNotFound,gin.H{"error":"status not found"});return};c.Status(http.StatusNoContent)}
+func deleteStatus(c *gin.Context){tx,err:=db.Begin(c.Request.Context());if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"status could not be deleted"});return};defer tx.Rollback(c.Request.Context());var mediaID string;if tx.QueryRow(c.Request.Context(),`DELETE FROM statuses WHERE id=$1 AND user_id=$2 RETURNING media_id::text`,c.Param("id"),c.GetString("user_id")).Scan(&mediaID)!=nil{c.JSON(http.StatusNotFound,gin.H{"error":"status not found"});return};_,err=tx.Exec(c.Request.Context(),`DELETE FROM media_objects WHERE id=$1`,mediaID);if err!=nil||tx.Commit(c.Request.Context())!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"status could not be deleted"});return};c.Status(http.StatusNoContent)}
