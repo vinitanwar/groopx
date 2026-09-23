@@ -14,6 +14,13 @@ class StatusItem {
   factory StatusItem.fromJson(Map<String,dynamic> json)=>StatusItem(id:json['id'].toString(),userId:json['user_id'].toString(),userName:json['user_name']?.toString()??'GroopX user',avatarUrl:json['avatar_url']?.toString()??'',mediaUrl:json['media_url'].toString(),mediaType:json['media_type'].toString(),caption:json['caption']?.toString()??'',mine:json['mine']==true,viewed:json['viewed']==true,viewCount:json['view_count'] as int? ?? 0,createdAt:DateTime.tryParse(json['created_at']?.toString()??'')??DateTime.now());
 }
 
+class StatusViewerItem {
+  const StatusViewerItem({required this.userId,required this.name,required this.avatarUrl,required this.viewedAt});
+  factory StatusViewerItem.fromJson(Map<String,dynamic> json)=>StatusViewerItem(userId:json['user_id'].toString(),name:json['name']?.toString()??'GroopX user',avatarUrl:json['avatar_url']?.toString()??'',viewedAt:DateTime.tryParse(json['viewed_at']?.toString()??'')?.toLocal()??DateTime.now());
+  final String userId,name,avatarUrl;
+  final DateTime viewedAt;
+}
+
 class StatusApi {
   StatusApi._(){_dio.interceptors.add(InterceptorsWrapper(onRequest:(options,handler)async{final token=await AuthSession.instance.accessToken;if(token!=null)options.headers['Authorization']='Bearer $token';handler.next(options);},onError:(error,handler)async{if(error.response?.statusCode==401&&error.requestOptions.extra['retried']!=true){try{await AuthApi.instance.refresh();error.requestOptions.headers['Authorization']='Bearer ${await AuthSession.instance.accessToken}';error.requestOptions.extra['retried']=true;return handler.resolve(await _dio.fetch(error.requestOptions));}catch(_){}}handler.next(error);}));}
   static final instance=StatusApi._();
@@ -29,6 +36,7 @@ class StatusApi {
     await _dio.post('/statuses',data:{'object_key':objectKey,'file_name':picked.name,'content_type':contentType,'size':size,'caption':caption});return true;
   }
   Future<void> viewed(String id)=>_dio.post('/statuses/$id/view');
+  Future<List<StatusViewerItem>> viewers(String id)async{final response=await _dio.get<Map<String,dynamic>>('/statuses/$id/views');return(response.data?['items']as List<dynamic>? ?? const[]).map((item)=>StatusViewerItem.fromJson(item as Map<String,dynamic>)).toList();}
   Future<void> delete(String id)=>_dio.delete('/statuses/$id');
   String _contentType(String name,bool video){final lower=name.toLowerCase();if(video)return lower.endsWith('.mov')?'video/quicktime':'video/mp4';if(lower.endsWith('.png'))return'image/png';if(lower.endsWith('.webp'))return'image/webp';return'image/jpeg';}
 }

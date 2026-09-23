@@ -59,6 +59,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const Divider(height: 1, indent: 58),
               _menu(Icons.call_outlined, 'Calls', 'Audio and video call history', () => _open('/calls')),
               const Divider(height: 1, indent: 58),
+              _menu(Icons.auto_awesome_outlined, 'Status updates', 'Photo and video stories for 24 hours', () => _open('/statuses')),
+              const Divider(height: 1, indent: 58),
               _menu(Icons.storage_outlined, 'Storage & data', 'Media, network and local storage information', () => _open('/profile/storage')),
               const Divider(height: 1, indent: 58),
               _menu(Icons.help_outline, 'Help & about', 'Privacy, terms and application information', () => _open('/profile/help')),

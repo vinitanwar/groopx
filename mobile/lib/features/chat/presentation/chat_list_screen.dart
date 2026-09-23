@@ -72,6 +72,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           Padding(padding: const EdgeInsets.fromLTRB(19, 18, 19, 12), child: Row(children: [
             const Text('Chats', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: _ink)),
             const Spacer(),
+            IconButton(onPressed: () => context.push('/statuses'), tooltip: 'Status updates', icon: const Icon(Icons.auto_awesome_outlined, color: _purple)),
             IconButton(onPressed: () => context.push('/notifications'), icon: const Icon(Icons.notifications_none, color: _purple)),
             IconButton(onPressed: () => searchFocus.requestFocus(), tooltip: 'Search chats', icon: const Icon(Icons.search, color: _purple)),
             IconButton(onPressed: () => context.go('/contacts/new'), icon: const Icon(Icons.edit_outlined, color: _purple)),

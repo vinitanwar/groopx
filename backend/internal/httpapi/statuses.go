@@ -34,4 +34,13 @@ func listStatuses(c *gin.Context) {
 
 func viewStatus(c *gin.Context){userID:=c.GetString("user_id");_,err:=db.Exec(c.Request.Context(),`INSERT INTO status_views(status_id,user_id) SELECT s.id,$2 FROM statuses s WHERE s.id=$1 AND s.expires_at>NOW() AND (s.user_id=$2 OR EXISTS(SELECT 1 FROM contacts c WHERE c.owner_id=$2 AND c.contact_user_id=s.user_id)) ON CONFLICT DO NOTHING`,c.Param("id"),userID);if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"status view could not be saved"});return};c.Status(http.StatusNoContent)}
 
+func listStatusViewers(c *gin.Context){
+	rows,err:=db.Query(c.Request.Context(),`SELECT u.id::text,COALESCE(u.full_name,u.username,'GroopX user'),COALESCE(u.avatar_url,''),v.viewed_at
+		FROM status_views v JOIN statuses s ON s.id=v.status_id JOIN users u ON u.id=v.user_id
+		WHERE v.status_id=$1 AND s.user_id=$2 AND v.user_id<>s.user_id ORDER BY v.viewed_at DESC`,c.Param("id"),c.GetString("user_id"))
+	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"status viewers could not be loaded"});return};defer rows.Close()
+	items:=make([]gin.H,0);for rows.Next(){var id,name,avatar string;var viewedAt time.Time;if rows.Scan(&id,&name,&avatar,&viewedAt)==nil{items=append(items,gin.H{"user_id":id,"name":name,"avatar_url":avatar,"viewed_at":viewedAt})}}
+	c.JSON(http.StatusOK,gin.H{"items":items})
+}
+
 func deleteStatus(c *gin.Context){result,err:=db.Exec(c.Request.Context(),`DELETE FROM statuses WHERE id=$1 AND user_id=$2`,c.Param("id"),c.GetString("user_id"));if err!=nil||result.RowsAffected()==0{c.JSON(http.StatusNotFound,gin.H{"error":"status not found"});return};c.Status(http.StatusNoContent)}
