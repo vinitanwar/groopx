@@ -141,12 +141,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final action = await showModalBottomSheet<String>(context: context, builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       Padding(padding: const EdgeInsets.all(14), child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: ['👍','❤️','😂','😮','🙏'].map((emoji) => InkWell(onTap: () => Navigator.pop(context, 'reaction:$emoji'), child: Text(emoji, style: const TextStyle(fontSize: 28)))).toList())),
       ListTile(leading: const Icon(Icons.reply), title: const Text('Reply'), onTap: () => Navigator.pop(context, 'reply')),
+      ListTile(leading: const Icon(Icons.forward), title: const Text('Forward'), onTap: () => Navigator.pop(context, 'forward')),
       ListTile(leading:Icon(message.starred?Icons.star:Icons.star_border,color:message.starred?Colors.amber:null),title:Text(message.starred?'Unstar message':'Star message'),onTap:()=>Navigator.pop(context,'star')),
       if (message.mine && message.kind == 'text') ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Edit message'), onTap: () => Navigator.pop(context, 'edit')),
       if (message.mine) ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('Delete message', style: TextStyle(color: Colors.red)), onTap: () => Navigator.pop(context, 'delete')),
     ])));
     if (action == null) return;
     if (action == 'reply') { setState(() => replyingTo = message); return; }
+    if (action == 'forward') { await _forwardMessage(message); return; }
     if(action=='star'){
       await ChatApi.instance.setStarred(message.id,!message.starred);
     }else if (action.startsWith('reaction:')) {
@@ -160,6 +162,23 @@ class _ConversationScreenState extends State<ConversationScreen> {
       controller.dispose(); if (text != null && text.isNotEmpty) await ChatApi.instance.editMessage(message.id, text);
     }
     await _refreshMessages();
+  }
+
+  Future<void> _forwardMessage(ChatMessage message) async {
+    List<ChatSummary> chats;
+    try { chats=(await ChatApi.instance.conversations()).where((item)=>item.id!=widget.conversationId).toList(); }
+    catch(_){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Chats load nahi hue. Retry karein.')));return;}
+    if(!mounted)return;
+    if(chats.isEmpty){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Forward karne ke liye koi aur chat nahi hai.')));return;}
+    final selected=<String>{};
+    final targets=await showDialog<List<String>>(context:context,builder:(dialogContext)=>StatefulBuilder(builder:(_,setDialogState)=>AlertDialog(
+      title:const Text('Forward message'),
+      content:SizedBox(width:double.maxFinite,height:360,child:ListView.builder(itemCount:chats.length,itemBuilder:(_,index){final chat=chats[index];final checked=selected.contains(chat.id);return CheckboxListTile(value:checked,secondary:CircleAvatar(child:Icon(chat.group?Icons.groups:Icons.person)),title:Text(chat.name,maxLines:1,overflow:TextOverflow.ellipsis),subtitle:chat.preview.isEmpty?null:Text(chat.preview,maxLines:1,overflow:TextOverflow.ellipsis),onChanged:(value){setDialogState((){if(value==true&&selected.length<5){selected.add(chat.id);}else if(value!=true){selected.remove(chat.id);}});});})),
+      actions:[TextButton(onPressed:()=>Navigator.pop(dialogContext),child:const Text('Cancel')),FilledButton(onPressed:selected.isEmpty?null:()=>Navigator.pop(dialogContext,selected.toList()),child:Text('Forward (${selected.length})'))],
+    )));
+    if(targets==null||targets.isEmpty)return;
+    try{final count=await ChatApi.instance.forwardMessage(message.id,targets);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Message $count chat${count==1?'':'s'} me forward ho gaya.')));}
+    catch(failure){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(_uploadError(failure))));}
   }
 
   @override
@@ -223,6 +242,7 @@ class _Bubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Align(alignment: message.mine ? Alignment.centerRight : Alignment.centerLeft, child: GestureDetector(onLongPress: onLongPress, child: Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.fromLTRB(13, 10, 10, 7), constraints: const BoxConstraints(maxWidth: 265), decoration: BoxDecoration(color: message.mine ? const Color(0xFFEEE9FF) : Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: message.mine ? null : const [BoxShadow(color: Color(0x10000000), blurRadius: 9)]), child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
     if (message.reply != null) Container(width: double.infinity, margin: const EdgeInsets.only(bottom: 7), padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Color(0x12000000), border: Border(left: BorderSide(color: authPurple, width: 3))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(message.reply!.mine ? 'You' : 'Reply', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: authPurple)), Text(message.reply!.text, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: authMuted))])),
+    if(message.forwarded)const Align(alignment:Alignment.centerLeft,child:Padding(padding:EdgeInsets.only(bottom:5),child:Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.forward,size:12,color:authMuted),SizedBox(width:3),Text('Forwarded',style:TextStyle(fontSize:10,fontStyle:FontStyle.italic,color:authMuted))]))),
     if (message.isAttachment) _AttachmentBody(message: message) else Text(message.text, style: const TextStyle(fontSize: 13, height: 1.35, color: authInk)),
     if (message.reactions.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 4, children: message.reactions.map((item) => Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: item.mine ? const Color(0xFFDCD1FF) : const Color(0xFFF1F1F4), borderRadius: BorderRadius.circular(10)), child: Text('${item.emoji} ${item.count}', style: const TextStyle(fontSize: 11)))).toList())),
     const SizedBox(height: 4), Row(mainAxisSize: MainAxisSize.min, children: [if(message.starred)const Padding(padding:EdgeInsets.only(right:4),child:Icon(Icons.star,size:11,color:Color(0xFFFFB300))),if (message.edited) const Text('edited  ', style: TextStyle(fontSize: 8, color: authMuted)), Text(message.time, style: const TextStyle(fontSize: 9, color: authMuted)), if (message.mine) Padding(padding: const EdgeInsets.only(left: 4), child: Icon(message.delivered ? Icons.done_all : Icons.done, size: 13, color: message.read ? authPurple : authMuted))]),

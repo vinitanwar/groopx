@@ -52,6 +52,7 @@ func Register(router *gin.Engine, database *pgxpool.Pool, configuration config.C
 	v1.DELETE("/messages/:id/reactions", requireBearer(), removeReaction)
 	v1.POST("/messages/:id/star", requireBearer(), starMessage)
 	v1.DELETE("/messages/:id/star", requireBearer(), unstarMessage)
+	v1.POST("/messages/:id/forward", requireBearer(), forwardMessage)
 	v1.POST("/contacts", requireBearer(), createContact)
 	v1.GET("/contacts", requireBearer(), listContacts)
 	v1.GET("/users/search", requireBearer(), searchUsers)

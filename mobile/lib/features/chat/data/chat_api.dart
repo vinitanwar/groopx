@@ -74,6 +74,7 @@ class ChatApi {
     if (add) { await _dio.post('/messages/$messageId/reactions', data: {'emoji': emoji}); } else { await _dio.delete('/messages/$messageId/reactions', data: {'emoji': emoji}); }
   }
   Future<void> setStarred(String messageId,bool starred)async{if(starred){await _dio.post('/messages/$messageId/star');}else{await _dio.delete('/messages/$messageId/star');}}
+  Future<int> forwardMessage(String messageId,List<String> conversationIds)async{final response=await _dio.post<Map<String,dynamic>>('/messages/$messageId/forward',data:{'conversation_ids':conversationIds});return response.data?['forwarded_count'] as int? ?? 0;}
 }
 
 class MessagePage {

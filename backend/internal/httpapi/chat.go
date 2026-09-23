@@ -147,7 +147,11 @@ func listMessages(c *gin.Context) {
 		var reactionItems []map[string]any; _ = json.Unmarshal(reactions, &reactionItems)
 		item := gin.H{"id": id, "sender_id": senderID, "text": body, "kind": kind, "status": status, "created_at": createdAt, "mine": senderID == userID, "edited": editedAt != nil, "reactions": reactionItems,"starred":starred}
 		if replyID != nil { item["reply"] = gin.H{"id":*replyID,"text":replyText,"sender_id":replySenderID,"mine":replySenderID != nil && *replySenderID == userID} }
-		if kind != "text" { var attachment map[string]any; if json.Unmarshal(metadata, &attachment) == nil { item["attachment"] = attachment } }
+		var messageMetadata map[string]any
+		if json.Unmarshal(metadata,&messageMetadata)==nil {
+			item["forwarded"] = messageMetadata["forwarded"] == true
+			if kind != "text" { item["attachment"] = messageMetadata }
+		}
 		items = append(items, item)
 		oldestTime, oldestID = createdAt, id
 	}
@@ -175,7 +179,7 @@ func listStarredMessages(c *gin.Context) {
 		WHERE s.user_id=$1 AND m.conversation_id=$2 AND m.deleted_at IS NULL ORDER BY s.created_at DESC LIMIT 200`,userID,conversationID)
 	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"starred messages could not be loaded"});return};defer rows.Close()
 	items:=make([]gin.H,0)
-	for rows.Next(){var id,senderID,body,kind,status string;var metadata []byte;var createdAt time.Time;var editedAt *time.Time;if rows.Scan(&id,&senderID,&body,&kind,&metadata,&status,&createdAt,&editedAt)!=nil{continue};item:=gin.H{"id":id,"sender_id":senderID,"text":body,"kind":kind,"status":status,"created_at":createdAt,"mine":senderID==userID,"edited":editedAt!=nil,"starred":true};if kind!="text"{var attachment map[string]any;if json.Unmarshal(metadata,&attachment)==nil{item["attachment"]=attachment}};items=append(items,item)}
+	for rows.Next(){var id,senderID,body,kind,status string;var metadata []byte;var createdAt time.Time;var editedAt *time.Time;if rows.Scan(&id,&senderID,&body,&kind,&metadata,&status,&createdAt,&editedAt)!=nil{continue};item:=gin.H{"id":id,"sender_id":senderID,"text":body,"kind":kind,"status":status,"created_at":createdAt,"mine":senderID==userID,"edited":editedAt!=nil,"starred":true};var messageMetadata map[string]any;if json.Unmarshal(metadata,&messageMetadata)==nil{item["forwarded"]=messageMetadata["forwarded"]==true;if kind!="text"{item["attachment"]=messageMetadata}};items=append(items,item)}
 	c.JSON(http.StatusOK,gin.H{"items":items})
 }
 
