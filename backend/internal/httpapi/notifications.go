@@ -38,4 +38,24 @@ func listNotifications(c *gin.Context) {
 func markNotificationRead(c *gin.Context){command,err:=db.Exec(c.Request.Context(),`UPDATE notifications SET read_at=COALESCE(read_at,NOW()) WHERE id=$1 AND user_id=$2`,c.Param("id"),c.GetString("user_id"));if err!=nil||command.RowsAffected()==0{c.JSON(http.StatusNotFound,gin.H{"error":"notification not found"});return};c.Status(http.StatusNoContent)}
 func markAllNotificationsRead(c *gin.Context){_,err:=db.Exec(c.Request.Context(),`UPDATE notifications SET read_at=COALESCE(read_at,NOW()) WHERE user_id=$1 AND read_at IS NULL`,c.GetString("user_id"));if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"notifications could not be updated"});return};c.Status(http.StatusNoContent)}
 
+func getUnreadNotificationCount(c *gin.Context) {
+	var count int
+	if err := db.QueryRow(c.Request.Context(), `SELECT COUNT(*) FROM notifications WHERE user_id=$1 AND read_at IS NULL`, c.GetString("user_id")).Scan(&count); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error":"notification count could not be loaded"}); return
+	}
+	c.JSON(http.StatusOK, gin.H{"unread":count})
+}
+
+func deleteNotification(c *gin.Context) {
+	command, err := db.Exec(c.Request.Context(), `DELETE FROM notifications WHERE id=$1 AND user_id=$2`, c.Param("id"), c.GetString("user_id"))
+	if err != nil || command.RowsAffected() == 0 { c.JSON(http.StatusNotFound, gin.H{"error":"notification not found"}); return }
+	c.Status(http.StatusNoContent)
+}
+
+func clearReadNotifications(c *gin.Context) {
+	command, err := db.Exec(c.Request.Context(), `DELETE FROM notifications WHERE user_id=$1 AND read_at IS NOT NULL`, c.GetString("user_id"))
+	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error":"notifications could not be cleared"}); return }
+	c.JSON(http.StatusOK, gin.H{"deleted":command.RowsAffected()})
+}
+
 func notifyConversation(conversationID,senderID,kind,title,body string,data map[string]any){payload,_:=json.Marshal(data);_,_=db.Exec(context.Background(),`INSERT INTO notifications(user_id,type,title,body,data) SELECT user_id,$3,$4,$5,$6 FROM conversation_members WHERE conversation_id=$1 AND user_id<>$2 AND hidden_at IS NULL`,conversationID,senderID,kind,title,body,payload);go sendConversationPush(conversationID,senderID,kind,title,body,data)}

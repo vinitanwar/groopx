@@ -132,7 +132,7 @@ class _GroopXAppState extends State<GroopXApp> {
     else{router.go('/notifications');}
   }
 
-  void _showForeground(String title,String body,Map<String,dynamic> data){if(data['call_id']?.toString().isNotEmpty==true){_openPush(data);return;}final context=rootNavigatorKey.currentContext;if(context!=null)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$title\n$body'),action:SnackBarAction(label:'View',onPressed:()=>data['type']?.toString()=='reminder'?router.go('/reminders'):router.go('/notifications'))));}
+  void _showForeground(String title,String body,Map<String,dynamic> data){NotificationCenter.instance.refresh();if(data['call_id']?.toString().isNotEmpty==true){_openPush(data);return;}final context=rootNavigatorKey.currentContext;if(context!=null)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$title\n$body'),action:SnackBarAction(label:'View',onPressed:()=>data['type']?.toString()=='reminder'?router.go('/reminders'):router.go('/notifications'))));}
 
   @override
   Widget build(BuildContext context) => MaterialApp.router(

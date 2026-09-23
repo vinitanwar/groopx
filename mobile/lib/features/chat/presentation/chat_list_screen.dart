@@ -7,6 +7,7 @@ import '../domain/chat_models.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/groopx_ui.dart';
 import '../../profile/data/backup_api.dart';
+import '../../notifications/data/notification_api.dart';
 
 const _purple = Color(0xFF6335FF);
 const _ink = Color(0xFF080C25);
@@ -18,7 +19,7 @@ class ChatListScreen extends StatefulWidget {
   State<ChatListScreen> createState() => _ChatListScreenState();
 }
 
-class _ChatListScreenState extends State<ChatListScreen> {
+class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObserver {
   final searchFocus = FocusNode();
   String filter = 'All';
   String query = '';
@@ -29,13 +30,17 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     PresenceSocket.instance.start();
     unawaited(BackupScheduler.maybeRun());
+    unawaited(NotificationCenter.instance.refresh());
     _load();
   }
 
   @override
-  void dispose() { searchFocus.dispose(); super.dispose(); }
+  void dispose() { WidgetsBinding.instance.removeObserver(this);searchFocus.dispose(); super.dispose(); }
+
+  @override void didChangeAppLifecycleState(AppLifecycleState state){if(state==AppLifecycleState.resumed){unawaited(NotificationCenter.instance.refresh());unawaited(_load());}}
 
   Future<void> _load() async {
     setState(() { loading = true; error = null; });
@@ -73,7 +78,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
             const Text('Chats', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: _ink)),
             const Spacer(),
             IconButton(onPressed: () => context.push('/statuses'), tooltip: 'Status updates', icon: const Icon(Icons.auto_awesome_outlined, color: _purple)),
-            IconButton(onPressed: () => context.push('/notifications'), icon: const Icon(Icons.notifications_none, color: _purple)),
+            const _NotificationBell(),
             IconButton(onPressed: () => searchFocus.requestFocus(), tooltip: 'Search chats', icon: const Icon(Icons.search, color: _purple)),
             IconButton(onPressed: () => context.go('/contacts/new'), icon: const Icon(Icons.edit_outlined, color: _purple)),
           ])),
@@ -140,6 +145,23 @@ class _ChatTile extends StatelessWidget {
           ]))),
         ]))),
       );
+}
+
+class _NotificationBell extends StatelessWidget {
+  const _NotificationBell();
+  @override
+  Widget build(BuildContext context)=>ValueListenableBuilder<int>(
+    valueListenable:NotificationCenter.instance.unread,
+    builder:(_,count,__)=>Stack(clipBehavior:Clip.none,children:[
+      IconButton(onPressed:()async{await context.push('/notifications');unawaited(NotificationCenter.instance.refresh());},tooltip:'Notifications',icon:const Icon(Icons.notifications_none,color:_purple)),
+      if(count>0)Positioned(right:5,top:4,child:Container(
+        padding:const EdgeInsets.symmetric(horizontal:5,vertical:2),
+        constraints:const BoxConstraints(minWidth:18),
+        decoration:BoxDecoration(color:Colors.red,borderRadius:BorderRadius.circular(10),border:Border.all(color:Colors.white,width:1.5)),
+        child:Text(count>99?'99+':'$count',textAlign:TextAlign.center,style:const TextStyle(color:Colors.white,fontSize:9,fontWeight:FontWeight.w700)),
+      )),
+    ]),
+  );
 }
 
 class _BottomNav extends StatelessWidget {
