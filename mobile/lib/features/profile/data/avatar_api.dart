@@ -33,41 +33,16 @@ class AvatarApi {
   final ImagePicker _picker = ImagePicker();
 
   Future<String?> pickAndUpload(ImageSource source) async {
-    final picked = await _picker.pickImage(source: source, imageQuality: 82, maxWidth: 1600, maxHeight: 1600);
+    final picked = await _picker.pickImage(source: source, imageQuality: 78, maxWidth: 1024, maxHeight: 1024);
     if (picked == null) return null;
     final file = File(picked.path);
     final size = await file.length();
-    if (size > 10 * 1024 * 1024) throw StateError('Photo 10 MB se chhoti honi chahiye');
-    final contentType = _contentType(picked.name);
-
-    final presign = await _dio.post<Map<String, dynamic>>('/media/presign', data: {
-      'file_name': picked.name,
-      'content_type': contentType,
-      'size': size,
-    });
-    final uploadURL = presign.data?['upload_url']?.toString();
-    final objectKey = presign.data?['object_key']?.toString();
-    if (uploadURL == null || objectKey == null) throw StateError('Photo upload prepare nahi hua');
-
-    await Dio().put<void>(uploadURL,
-        data: file.openRead(),
-        options: Options(headers: {'Content-Type': contentType, 'Content-Length': size}));
-    final saved = await _dio.put<Map<String, dynamic>>('/users/me/avatar', data: {
-      'object_key': objectKey,
-      'file_name': picked.name,
-      'content_type': contentType,
-      'size': size,
-    });
+    if (size > 5 * 1024 * 1024) throw StateError('Photo 5 MB se chhoti honi chahiye');
+    final saved = await _dio.post<Map<String, dynamic>>('/users/me/avatar/upload', data: FormData.fromMap({
+      'photo': await MultipartFile.fromFile(file.path, filename: picked.name),
+    }));
     return saved.data?['avatar_url']?.toString();
   }
 
   Future<void> remove() => _dio.delete<void>('/users/me/avatar');
-
-  String _contentType(String name) {
-    final lower = name.toLowerCase();
-    if (lower.endsWith('.png')) return 'image/png';
-    if (lower.endsWith('.webp')) return 'image/webp';
-    if (lower.endsWith('.heic') || lower.endsWith('.heif')) return 'image/heic';
-    return 'image/jpeg';
-  }
 }

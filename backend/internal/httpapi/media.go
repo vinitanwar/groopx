@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -112,12 +113,37 @@ func updateAvatar(c *gin.Context) {
 }
 
 func removeAvatar(c *gin.Context) {
-	result, err := db.Exec(c.Request.Context(), `UPDATE users SET avatar_url=NULL,updated_at=NOW() WHERE id=$1`, c.GetString("user_id"))
+	userID:=c.GetString("user_id")
+	tx,err:=db.Begin(c.Request.Context());if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"profile photo could not be removed"});return};defer tx.Rollback(c.Request.Context())
+	_,_=tx.Exec(c.Request.Context(),`DELETE FROM user_avatars WHERE user_id=$1`,userID)
+	result, err := tx.Exec(c.Request.Context(), `UPDATE users SET avatar_url=NULL,updated_at=NOW() WHERE id=$1`, userID)
 	if err != nil || result.RowsAffected() == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "profile not found"})
 		return
 	}
+	if tx.Commit(c.Request.Context())!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"profile photo could not be removed"});return}
 	c.Status(http.StatusNoContent)
+}
+
+func uploadAvatar(c *gin.Context){
+	c.Request.Body=http.MaxBytesReader(c.Writer,c.Request.Body,6*1024*1024)
+	fileHeader,err:=c.FormFile("photo");if err!=nil||fileHeader.Size<=0||fileHeader.Size>5*1024*1024{c.JSON(http.StatusBadRequest,gin.H{"error":"profile photo must be smaller than 5 MB"});return}
+	file,err:=fileHeader.Open();if err!=nil{c.JSON(http.StatusBadRequest,gin.H{"error":"profile photo could not be read"});return};defer file.Close()
+	data,err:=io.ReadAll(io.LimitReader(file,5*1024*1024+1));if err!=nil||len(data)==0||len(data)>5*1024*1024{c.JSON(http.StatusBadRequest,gin.H{"error":"profile photo must be smaller than 5 MB"});return}
+	contentType:=http.DetectContentType(data);if contentType!="image/jpeg"&&contentType!="image/png"&&contentType!="image/webp"{c.JSON(http.StatusBadRequest,gin.H{"error":"profile photo must be JPG, PNG or WebP"});return}
+	userID:=c.GetString("user_id");scheme:=c.GetHeader("X-Forwarded-Proto");if scheme==""{scheme="http";if c.Request.TLS!=nil{scheme="https"}}
+	avatarURL:=scheme+"://"+c.Request.Host+"/api/v1/avatars/"+userID+"?v="+strconv.FormatInt(time.Now().Unix(),10)
+	tx,err:=db.Begin(c.Request.Context());if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"profile photo could not be saved"});return};defer tx.Rollback(c.Request.Context())
+	_,err=tx.Exec(c.Request.Context(),`INSERT INTO user_avatars(user_id,content_type,image_data) VALUES($1,$2,$3) ON CONFLICT(user_id) DO UPDATE SET content_type=EXCLUDED.content_type,image_data=EXCLUDED.image_data,updated_at=NOW()`,userID,contentType,data)
+	if err==nil{_,err=tx.Exec(c.Request.Context(),`UPDATE users SET avatar_url=$2,updated_at=NOW() WHERE id=$1`,userID,avatarURL)}
+	if err!=nil||tx.Commit(c.Request.Context())!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"profile photo could not be saved"});return}
+	c.JSON(http.StatusOK,gin.H{"message":"profile photo updated","avatar_url":avatarURL})
+}
+
+func getAvatar(c *gin.Context){
+	var contentType string;var data []byte
+	if db.QueryRow(c.Request.Context(),`SELECT content_type,image_data FROM user_avatars WHERE user_id=$1`,c.Param("userId")).Scan(&contentType,&data)!=nil{c.Status(http.StatusNotFound);return}
+	c.Header("Cache-Control","public, max-age=86400");c.Data(http.StatusOK,contentType,data)
 }
 
 func presignedPutURL(objectKey string, expires time.Duration)(string,error){

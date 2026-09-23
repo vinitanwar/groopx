@@ -129,9 +129,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   String _photoError(Object exception) {
     final value = exception.toString().toLowerCase();
-    if (value.contains('503') || value.contains('not configured')) return 'Photo storage abhi configure nahi hai.';
     if (value.contains('permission')) return 'Camera ya gallery permission allow karein.';
-    if (value.contains('10 mb')) return 'Photo 10 MB se chhoti honi chahiye.';
+    if (value.contains('5 mb')) return 'Photo 5 MB se chhoti honi chahiye.';
     return 'Profile photo upload nahi hui. Retry karein.';
   }
 }

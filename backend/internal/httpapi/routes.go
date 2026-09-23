@@ -17,6 +17,7 @@ func Register(router *gin.Engine, database *pgxpool.Pool, configuration config.C
 	v1.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "groopx-api"})
 	})
+	v1.GET("/avatars/:userId", getAvatar)
 	v1.POST("/auth/request-otp", requestOTP)
 	v1.POST("/auth/verify-otp", verifyOTP)
 	v1.POST("/auth/refresh", refreshSession)
@@ -27,6 +28,7 @@ func Register(router *gin.Engine, database *pgxpool.Pool, configuration config.C
 	v1.POST("/users/me/sessions/revoke-others", requireBearer(), revokeOtherSessions)
 	v1.PUT("/users/me/profile", requireBearer(), updateProfile)
 	v1.PUT("/users/me/avatar", requireBearer(), updateAvatar)
+	v1.POST("/users/me/avatar/upload", requireBearer(), uploadAvatar)
 	v1.DELETE("/users/me/avatar", requireBearer(), removeAvatar)
 	v1.PATCH("/users/me/settings", requireBearer(), updateSettings)
 	v1.GET("/users/blocked", requireBearer(), listBlockedUsers)
