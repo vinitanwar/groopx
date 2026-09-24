@@ -1,5 +1,7 @@
 package com.futureittouch.groopx
 
+import android.media.AudioManager
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -8,8 +10,12 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val voiceChannel = "com.futureittouch.groopx/voice_recorder"
+    private val playbackChannelName = "com.futureittouch.groopx/audio_player"
+    private lateinit var playbackChannel: MethodChannel
     private var recorder: MediaRecorder? = null
     private var recordingFile: File? = null
+    private var mediaPlayer: MediaPlayer? = null
+    private var playingUrl: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -21,6 +27,65 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        playbackChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, playbackChannelName)
+        playbackChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "play" -> playAudio(call.arguments as? String, result)
+                "pause" -> { mediaPlayer?.pause(); result.success(null) }
+                "resume" -> { mediaPlayer?.start(); result.success(null) }
+                "seek" -> { mediaPlayer?.seekTo((call.arguments as? Int) ?: 0); result.success(null) }
+                "position" -> result.success(mediaPlayer?.currentPosition ?: 0)
+                "stop" -> { releasePlayer(); result.success(null) }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun playAudio(url: String?, result: MethodChannel.Result) {
+        if (url.isNullOrBlank()) {
+            result.error("invalid_url", "Audio URL is unavailable", null)
+            return
+        }
+        releasePlayer()
+        var replied = false
+        try {
+            playingUrl = url
+            mediaPlayer = MediaPlayer().apply {
+                setAudioStreamType(AudioManager.STREAM_MUSIC)
+                setDataSource(url)
+                setOnPreparedListener {
+                    it.start()
+                    replied = true
+                    result.success(it.duration)
+                }
+                setOnCompletionListener {
+                    playbackChannel.invokeMethod("playbackCompleted", playingUrl)
+                    releasePlayer()
+                }
+                setOnErrorListener { _, what, extra ->
+                    if (!replied) {
+                        replied = true
+                        result.error("playback_failed", "Audio playback failed ($what/$extra)", null)
+                    } else {
+                        playbackChannel.invokeMethod("playbackError", playingUrl)
+                    }
+                    releasePlayer()
+                    true
+                }
+                prepareAsync()
+            }
+        } catch (failure: Exception) {
+            releasePlayer()
+            if (!replied) result.error("playback_failed", failure.message ?: "Audio could not play", null)
+        }
+    }
+
+    private fun releasePlayer() {
+        try { mediaPlayer?.stop() } catch (_: Exception) {}
+        try { mediaPlayer?.release() } catch (_: Exception) {}
+        mediaPlayer = null
+        playingUrl = null
     }
 
     @Suppress("DEPRECATION")
@@ -30,6 +95,10 @@ class MainActivity : FlutterActivity() {
             return
         }
         try {
+            if (mediaPlayer != null) {
+                playbackChannel.invokeMethod("playbackCompleted", playingUrl)
+                releasePlayer()
+            }
             val file = File(cacheDir, "voice-${System.currentTimeMillis()}.m4a")
             recordingFile = file
             val next = MediaRecorder().apply {
@@ -89,6 +158,7 @@ class MainActivity : FlutterActivity() {
         releaseRecorder()
         recordingFile?.delete()
         recordingFile = null
+        releasePlayer()
         super.onDestroy()
     }
 }

@@ -15,6 +15,7 @@ import '../../contacts/data/social_api.dart';
 import '../data/chat_api.dart';
 import '../data/chat_socket.dart';
 import '../data/media_api.dart';
+import '../data/voice_playback.dart';
 import '../domain/chat_models.dart';
 
 class ConversationScreen extends StatefulWidget {
@@ -302,14 +303,33 @@ class _AttachmentBody extends StatelessWidget {
     }
     if(message.kind=='audio'){
       final duration=(message.attachment?['duration_ms'] as num?)?.toInt()??0;
-      final seconds=duration~/1000;
-      final label=duration>0?'Voice note  ${(seconds~/60).toString().padLeft(2,'0')}:${(seconds%60).toString().padLeft(2,'0')}':name;
-      return InkWell(onTap:url==null?null:()=>_preview(context,url,name),child:_fileRow(Icons.play_circle,label:label));
+      if(url!=null)return _VoiceNotePlayer(url:url,durationMs:duration);
+      return _fileRow(Icons.audio_file,label:name);
     }
     return InkWell(onTap:url==null?null:()=>_preview(context,url,name),child:_fileRow(message.kind == 'video' ? Icons.video_file : Icons.description));
   }
   void _preview(BuildContext context,String url,String name)=>context.push('/attachment',extra:<String,String>{'kind':message.kind,'name':name,'url':url});
   Widget _fileRow(IconData icon,{String? label}) => Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, color: authPurple), const SizedBox(width: 8), Flexible(child: Text(label??message.attachment?['file_name']?.toString()??message.text, overflow: TextOverflow.ellipsis, style: const TextStyle(color: authInk)))]);
+}
+
+class _VoiceNotePlayer extends StatelessWidget {
+  const _VoiceNotePlayer({required this.url,required this.durationMs});
+  final String url;
+  final int durationMs;
+  String _time(int value){final seconds=value~/1000;return '${(seconds~/60).toString().padLeft(2,'0')}:${(seconds%60).toString().padLeft(2,'0')}';}
+  @override
+  Widget build(BuildContext context){
+    final controller=VoicePlaybackController.instance;
+    return AnimatedBuilder(animation:controller,builder:(_,__) {
+      final active=controller.isCurrent(url);
+      final total=active&&controller.durationMs>0?controller.durationMs:durationMs;
+      final position=active?controller.positionMs:0;
+      return SizedBox(width:220,child:Row(children:[
+        IconButton.filled(style:IconButton.styleFrom(backgroundColor:authPurple),onPressed:()async{try{await controller.toggle(url,durationMs);}catch(_){if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Voice note play nahi hua.')));}},icon:controller.loading&&active?const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2,color:Colors.white)):Icon(active&&controller.playing?Icons.pause:Icons.play_arrow,color:Colors.white)),
+        Expanded(child:Column(mainAxisSize:MainAxisSize.min,children:[SliderTheme(data:SliderTheme.of(context).copyWith(trackHeight:2,thumbShape:const RoundSliderThumbShape(enabledThumbRadius:5),overlayShape:SliderComponentShape.noOverlay),child:Slider(value:total>0?position.clamp(0,total).toDouble():0,max:total>0?total.toDouble():1,onChanged:active?(value){controller.seek(url,value.toInt());}:null)),Align(alignment:Alignment.centerRight,child:Text(_time(active?position:total),style:const TextStyle(fontSize:10,color:authMuted))) ])),
+      ]));
+    });
+  }
 }
 
 class _AttachmentAction extends StatelessWidget {
