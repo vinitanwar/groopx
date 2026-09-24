@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../auth/presentation/auth_components.dart';
 import '../../contacts/data/social_api.dart';
@@ -22,6 +25,7 @@ class ConversationScreen extends StatefulWidget {
 }
 
 class _ConversationScreenState extends State<ConversationScreen> {
+  static const voiceRecorder=MethodChannel('com.futureittouch.groopx/voice_recorder');
   final input = TextEditingController();
   final scrollController = ScrollController();
   ChatSocket? socket;
@@ -35,6 +39,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
   String? nextCursor;
   bool loading = true;
   bool uploading = false;
+  bool recording = false;
+  int recordingSeconds = 0;
+  Timer? recordingTimer;
   double uploadProgress = 0;
   String? error;
 
@@ -69,7 +76,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   @override
-  void dispose() { typingTimer?.cancel(); subscription?.cancel(); socket?.close(); scrollController.dispose(); input.dispose(); super.dispose(); }
+  void dispose() { typingTimer?.cancel(); recordingTimer?.cancel(); if(recording)voiceRecorder.invokeMethod<void>('cancel'); subscription?.cancel(); socket?.close(); scrollController.dispose(); input.dispose(); super.dispose(); }
 
   void _onScroll() { if (scrollController.hasClients && scrollController.position.pixels >= scrollController.position.maxScrollExtent - 140) _loadOlder(); }
   Future<void> _loadOlder() async {
@@ -111,6 +118,38 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if(failure is StateError)return failure.message.toString();
     return 'Upload failed. Internet check karke retry karein.';
   }
+
+  Future<void> _startVoiceNote()async{
+    if(uploading||recording||details?.communicationBlocked==true)return;
+    final permission=await Permission.microphone.request();
+    if(!permission.isGranted){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Voice note ke liye microphone permission allow karein.')));return;}
+    try{
+      await voiceRecorder.invokeMethod<String>('start');
+      if(!mounted)return;
+      setState((){recording=true;recordingSeconds=0;});
+      recordingTimer=Timer.periodic(const Duration(seconds:1),(_){if(!mounted)return;setState(()=>recordingSeconds++);if(recordingSeconds>=300)_finishVoiceNote(send:true);});
+    }catch(_){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Voice recording start nahi hui.')));}
+  }
+
+  Future<void> _finishVoiceNote({required bool send})async{
+    if(!recording)return;
+    recordingTimer?.cancel();recordingTimer=null;
+    final duration=recordingSeconds;
+    setState(()=>recording=false);
+    String? recordedPath;
+    try{
+      final path=await voiceRecorder.invokeMethod<String>(send?'stop':'cancel');
+      recordedPath=path;
+      if(!send||path==null)return;
+      final file=File(path);
+      if(duration<1||!await file.exists()){throw StateError('Voice note bahut short hai');}
+      setState((){uploading=true;uploadProgress=0;});
+      await MediaApi.instance.uploadFile(conversationId:widget.conversationId,path:path,fileName:'voice-${DateTime.now().millisecondsSinceEpoch}.m4a',size:await file.length(),durationMs:duration*1000,onProgress:(value){if(mounted)setState(()=>uploadProgress=value);});
+    }catch(failure){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(_uploadError(failure))));}
+    finally{if(recordedPath!=null){final temporary=File(recordedPath);if(await temporary.exists())await temporary.delete();}if(mounted)setState(()=>uploading=false);}
+  }
+
+  String get _recordingTime=>'${(recordingSeconds~/60).toString().padLeft(2,'0')}:${(recordingSeconds%60).toString().padLeft(2,'0')}';
 
   void _showAttachments() => showModalBottomSheet<void>(context: context, builder: (_) => SafeArea(child: Padding(padding: const EdgeInsets.all(20), child: Wrap(alignment:WrapAlignment.spaceAround,runSpacing:12,children: [
     _AttachmentAction(icon: Icons.image, label: 'Image', onTap: () => _upload(FileType.image)),
@@ -191,10 +230,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
       if (otherTyping) const Padding(padding: EdgeInsets.fromLTRB(18, 4, 18, 2), child: Align(alignment: Alignment.centerLeft, child: Text('Typing...', style: TextStyle(fontSize: 11, color: authPurple, fontStyle: FontStyle.italic)))),
       if (uploading) LinearProgressIndicator(value: uploadProgress == 0 ? null : uploadProgress, color: authPurple, backgroundColor: const Color(0xFFEEE9FF)),
       if (replyingTo != null) Container(color: const Color(0xFFF2EEFF), padding: const EdgeInsets.fromLTRB(16, 8, 8, 8), child: Row(children: [const Icon(Icons.reply, size: 18, color: authPurple), const SizedBox(width: 8), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(replyingTo!.mine ? 'Replying to yourself' : 'Replying to message', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: authPurple)), Text(replyingTo!.text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: authMuted))])), IconButton(onPressed: () => setState(() => replyingTo = null), icon: const Icon(Icons.close, size: 18))])),
-      SafeArea(top: false, child: Container(padding: const EdgeInsets.fromLTRB(15, 8, 15, 10), decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Color(0x10000000), blurRadius: 15)]), child: Row(children: [
+      SafeArea(top: false, child: Container(padding: const EdgeInsets.fromLTRB(15, 8, 15, 10), decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Color(0x10000000), blurRadius: 15)]), child: recording?Row(children:[IconButton(onPressed:()=>_finishVoiceNote(send:false),icon:const Icon(Icons.delete_outline,color:Colors.red)),const SizedBox(width:8),const Icon(Icons.fiber_manual_record,color:Colors.red,size:14),const SizedBox(width:8),Expanded(child:Text('Recording  $_recordingTime',style:const TextStyle(fontWeight:FontWeight.w600,color:authInk))),IconButton.filled(onPressed:()=>_finishVoiceNote(send:true),style:IconButton.styleFrom(backgroundColor:authPurple),icon:const Icon(Icons.send,color:Colors.white))]):Row(children: [
         IconButton(onPressed: uploading || details?.communicationBlocked == true ? null : _showAttachments, style: IconButton.styleFrom(backgroundColor: authPurple), icon: const Icon(Icons.add, color: Colors.white)), const SizedBox(width: 8),
         Expanded(child: TextField(controller: input, onChanged: _typing, onSubmitted: (_) => send(), decoration: InputDecoration(hintText: 'Type a message...', filled: true, fillColor: const Color(0xFFF4F2F8), border: OutlineInputBorder(borderSide: BorderSide.none, borderRadius: BorderRadius.circular(23))))),
-        IconButton(onPressed: send, icon: const Icon(Icons.send_rounded, color: authPurple)), IconButton(onPressed: uploading || details?.communicationBlocked == true ? null : _showAttachments, icon: const Icon(Icons.mic, color: authPurple)),
+        IconButton(onPressed: send, icon: const Icon(Icons.send_rounded, color: authPurple)), IconButton(onPressed: uploading || details?.communicationBlocked == true ? null : _startVoiceNote, icon: const Icon(Icons.mic, color: authPurple)),
       ]))),
     ]),
   ));
@@ -261,10 +300,16 @@ class _AttachmentBody extends StatelessWidget {
       final mapUrl=message.attachment?['map_url']?.toString();
       return InkWell(onTap:mapUrl==null?null:()=>launchUrl(Uri.parse(mapUrl),mode:LaunchMode.externalApplication),child:_fileRow(Icons.location_on));
     }
-    return InkWell(onTap:url==null?null:()=>_preview(context,url,name),child:_fileRow(message.kind == 'audio' ? Icons.play_circle : message.kind == 'video' ? Icons.video_file : Icons.description));
+    if(message.kind=='audio'){
+      final duration=(message.attachment?['duration_ms'] as num?)?.toInt()??0;
+      final seconds=duration~/1000;
+      final label=duration>0?'Voice note  ${(seconds~/60).toString().padLeft(2,'0')}:${(seconds%60).toString().padLeft(2,'0')}':name;
+      return InkWell(onTap:url==null?null:()=>_preview(context,url,name),child:_fileRow(Icons.play_circle,label:label));
+    }
+    return InkWell(onTap:url==null?null:()=>_preview(context,url,name),child:_fileRow(message.kind == 'video' ? Icons.video_file : Icons.description));
   }
   void _preview(BuildContext context,String url,String name)=>context.push('/attachment',extra:<String,String>{'kind':message.kind,'name':name,'url':url});
-  Widget _fileRow(IconData icon) => Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, color: authPurple), const SizedBox(width: 8), Flexible(child: Text(message.attachment?['file_name'] as String? ?? message.text, overflow: TextOverflow.ellipsis, style: const TextStyle(color: authInk)))]);
+  Widget _fileRow(IconData icon,{String? label}) => Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, color: authPurple), const SizedBox(width: 8), Flexible(child: Text(label??message.attachment?['file_name']?.toString()??message.text, overflow: TextOverflow.ellipsis, style: const TextStyle(color: authInk)))]);
 }
 
 class _AttachmentAction extends StatelessWidget {

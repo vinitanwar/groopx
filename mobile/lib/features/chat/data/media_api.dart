@@ -33,18 +33,22 @@ class MediaApi {
     final file = selection?.files.single;
     if (file == null) return;
     if (file.path == null) throw StateError('The selected file is unavailable');
-    if (file.size > 200 * 1024 * 1024) throw StateError('Maximum file size is 200 MB');
-    final contentType = _contentType(file.name);
+    await uploadFile(conversationId:conversationId,path:file.path!,fileName:file.name,size:file.size,onProgress:onProgress);
+  }
+
+  Future<void> uploadFile({required String conversationId,required String path,required String fileName,required int size,required void Function(double) onProgress,int durationMs=0}) async {
+    if (size > 200 * 1024 * 1024) throw StateError('Maximum file size is 200 MB');
+    final contentType = _contentType(fileName);
     try {
-      final presign = await _dio.post<Map<String, dynamic>>('/media/presign', data: {'file_name': file.name, 'content_type': contentType, 'size': file.size});
+      final presign = await _dio.post<Map<String, dynamic>>('/media/presign', data: {'file_name': fileName, 'content_type': contentType, 'size': size});
       final data = presign.data ?? <String, dynamic>{};
       final uploadClient = Dio(BaseOptions(sendTimeout: const Duration(minutes: 5), receiveTimeout: const Duration(minutes: 5)));
-      await uploadClient.put<void>(data['upload_url'] as String, data: File(file.path!).openRead(), options: Options(headers: {'Content-Type': contentType, 'Content-Length': file.size}), onSendProgress: (sent, total) => onProgress(total <= 0 ? 0 : sent / total));
-      await _dio.post('/media/complete', data: {'conversation_id': conversationId, 'object_key': data['object_key'], 'file_name': file.name, 'content_type': contentType, 'size': file.size});
+      await uploadClient.put<void>(data['upload_url'] as String, data: File(path).openRead(), options: Options(headers: {'Content-Type': contentType, 'Content-Length': size}), onSendProgress: (sent, total) => onProgress(total <= 0 ? 0 : sent / total));
+      await _dio.post('/media/complete', data: {'conversation_id': conversationId, 'object_key': data['object_key'], 'file_name': fileName, 'content_type': contentType, 'size': size,'duration_ms':durationMs});
     } on DioException catch (failure) {
       if (failure.response?.statusCode != 503) rethrow;
-      if (file.size > 25 * 1024 * 1024) throw StateError('External storage configure hone tak maximum attachment size 25 MB hai');
-      final form=FormData.fromMap({'conversation_id':conversationId,'file':await MultipartFile.fromFile(file.path!,filename:file.name,contentType:MediaType.parse(contentType))});
+      if (size > 25 * 1024 * 1024) throw StateError('External storage configure hone tak maximum attachment size 25 MB hai');
+      final form=FormData.fromMap({'conversation_id':conversationId,'duration_ms':durationMs,'file':await MultipartFile.fromFile(path,filename:fileName,contentType:MediaType.parse(contentType))});
       await _dio.post('/media/upload',data:form,options:Options(sendTimeout:const Duration(minutes:5),receiveTimeout:const Duration(minutes:5)),onSendProgress:(sent,total)=>onProgress(total<=0?0:sent/total));
     }
     onProgress(1);

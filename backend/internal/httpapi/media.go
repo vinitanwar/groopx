@@ -74,6 +74,9 @@ func completeMediaMessage(c *gin.Context) {
 func uploadMediaMessage(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 27*1024*1024)
 	conversationID := strings.TrimSpace(c.PostForm("conversation_id"))
+	durationMS, _ := strconv.Atoi(strings.TrimSpace(c.PostForm("duration_ms")))
+	if durationMS < 0 { durationMS = 0 }
+	if durationMS > 300000 { durationMS = 300000 }
 	userID := c.GetString("user_id")
 	if conversationID == "" || !isConversationMember(c, conversationID, userID) {
 		c.JSON(http.StatusForbidden, gin.H{"error":"not a conversation member"}); return
@@ -109,11 +112,11 @@ func uploadMediaMessage(c *gin.Context) {
 	if _,err=rand.Read(random);err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"media message could not be saved"});return}
 	objectKey := "database/"+hex.EncodeToString(random)+"-"+fileName
 	var mediaID string
-	err = tx.QueryRow(ctx, `INSERT INTO media_objects(owner_id,object_key,file_name,content_type,size_bytes) VALUES($1,$2,$3,$4,$5) RETURNING id::text`, userID, objectKey, fileName, contentType, len(data)).Scan(&mediaID)
+	err = tx.QueryRow(ctx, `INSERT INTO media_objects(owner_id,object_key,file_name,content_type,size_bytes,duration_ms) VALUES($1,$2,$3,$4,$5,NULLIF($6,0)) RETURNING id::text`, userID, objectKey, fileName, contentType, len(data), durationMS).Scan(&mediaID)
 	if err == nil { _,err=tx.Exec(ctx, `INSERT INTO media_blobs(media_id,file_data) VALUES($1,$2)`, mediaID, data) }
 	scheme:=c.GetHeader("X-Forwarded-Proto");if scheme==""{scheme="http";if c.Request.TLS!=nil{scheme="https"}}
 	publicURL:=scheme+"://"+c.Request.Host+"/api/v1/media/files/"+mediaID
-	metadata:=gin.H{"file_name":fileName,"content_type":contentType,"size":len(data),"object_key":objectKey,"url":publicURL,"duration_ms":0}
+	metadata:=gin.H{"file_name":fileName,"content_type":contentType,"size":len(data),"object_key":objectKey,"url":publicURL,"duration_ms":durationMS}
 	metadataJSON,_:=json.Marshal(metadata)
 	status:="sent";if onlineRecipients(conversationID,userID)>0||isConversationPeerOnline(conversationID,userID){status="delivered"}
 	var messageID string;var createdAt time.Time
