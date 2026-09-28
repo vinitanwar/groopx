@@ -44,6 +44,7 @@ class ChatApi {
     return items.map((item) => ChatMessage.fromJson(item as Map<String, dynamic>)).toList();
   }
   Future<List<ChatMessage>> starredMessages(String conversationId)async{final response=await _dio.get<Map<String,dynamic>>('/conversations/$conversationId/messages/starred');return(response.data?['items']as List<dynamic>? ?? const[]).map((item)=>ChatMessage.fromJson(item as Map<String,dynamic>)).toList();}
+  Future<List<ChatMessage>> pinnedMessages(String conversationId)async{final response=await _dio.get<Map<String,dynamic>>('/conversations/$conversationId/messages/pinned');return(response.data?['items']as List<dynamic>? ?? const[]).map((item)=>ChatMessage.fromJson(item as Map<String,dynamic>)).toList();}
   Future<ConversationDetails> conversation(String conversationId) async {
     final response = await _dio.get<Map<String, dynamic>>('/conversations/$conversationId');
     return ConversationDetails.fromJson(response.data ?? <String, dynamic>{});
@@ -74,6 +75,7 @@ class ChatApi {
     if (add) { await _dio.post('/messages/$messageId/reactions', data: {'emoji': emoji}); } else { await _dio.delete('/messages/$messageId/reactions', data: {'emoji': emoji}); }
   }
   Future<void> setStarred(String messageId,bool starred)async{if(starred){await _dio.post('/messages/$messageId/star');}else{await _dio.delete('/messages/$messageId/star');}}
+  Future<void> setPinned(String messageId,bool pinned)async{if(pinned){await _dio.post('/messages/$messageId/pin');}else{await _dio.delete('/messages/$messageId/pin');}}
   Future<int> forwardMessage(String messageId,List<String> conversationIds)async{final response=await _dio.post<Map<String,dynamic>>('/messages/$messageId/forward',data:{'conversation_ids':conversationIds});return response.data?['forwarded_count'] as int? ?? 0;}
 }
 

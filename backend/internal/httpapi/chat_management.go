@@ -61,6 +61,7 @@ func deleteMessage(c *gin.Context) {
 	var conversationID string
 	err := db.QueryRow(c.Request.Context(), `UPDATE messages SET body='',metadata='{}'::jsonb,deleted_at=NOW() WHERE id=$1 AND sender_id=$2 AND deleted_at IS NULL RETURNING conversation_id::text`, c.Param("id"), c.GetString("user_id")).Scan(&conversationID)
 	if err != nil { c.JSON(http.StatusNotFound, gin.H{"error":"message not found"}); return }
+	_, _ = db.Exec(c.Request.Context(), `DELETE FROM message_pins WHERE message_id=$1`, c.Param("id"))
 	broadcast(conversationID,c.GetString("user_id"),gin.H{"type":"message_delete","id":c.Param("id")})
 	c.Status(http.StatusNoContent)
 }
