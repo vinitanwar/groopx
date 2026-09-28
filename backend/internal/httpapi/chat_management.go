@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -9,9 +10,26 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func expireConversationMessages(ctx context.Context,conversationID string){
+	_,_=db.Exec(ctx,`UPDATE messages SET body='',metadata='{}'::jsonb,deleted_at=NOW() WHERE conversation_id=$1 AND deleted_at IS NULL AND expires_at<=NOW()`,conversationID)
+}
+
+func updateDisappearingMessages(c *gin.Context){
+	conversationID,userID:=c.Param("id"),c.GetString("user_id")
+	var input struct{Seconds int `json:"seconds"`}
+	if c.ShouldBindJSON(&input)!=nil || (input.Seconds!=0 && input.Seconds!=86400 && input.Seconds!=604800 && input.Seconds!=7776000){c.JSON(http.StatusBadRequest,gin.H{"error":"timer must be off, 24 hours, 7 days, or 90 days"});return}
+	var allowed bool
+	err:=db.QueryRow(c.Request.Context(),`SELECT EXISTS(SELECT 1 FROM conversations conv JOIN conversation_members cm ON cm.conversation_id=conv.id WHERE conv.id=$1 AND cm.user_id=$2 AND (conv.kind='direct' OR cm.role='admin'))`,conversationID,userID).Scan(&allowed)
+	if err!=nil||!allowed{c.JSON(http.StatusForbidden,gin.H{"error":"Only group admins can change this timer"});return}
+	if _,err=db.Exec(c.Request.Context(),`UPDATE conversations SET disappearing_seconds=$2,updated_at=NOW() WHERE id=$1`,conversationID,input.Seconds);err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"timer could not be updated"});return}
+	broadcast(conversationID,userID,gin.H{"type":"disappearing_update","conversation_id":conversationID,"seconds":input.Seconds})
+	c.JSON(http.StatusOK,gin.H{"conversation_id":conversationID,"disappearing_seconds":input.Seconds})
+}
+
 func listConversationMedia(c *gin.Context) {
 	conversationID,userID:=c.Param("id"),c.GetString("user_id")
 	if !isConversationMember(c,conversationID,userID){c.JSON(http.StatusForbidden,gin.H{"error":"not a conversation member"});return}
+	expireConversationMessages(c.Request.Context(),conversationID)
 	rows,err:=db.Query(c.Request.Context(),`SELECT id::text,kind::text,metadata,created_at FROM messages WHERE conversation_id=$1 AND kind<>'text' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200`,conversationID)
 	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"shared media could not be loaded"});return}
 	defer rows.Close();items:=make([]gin.H,0)

@@ -78,6 +78,7 @@ func Register(router *gin.Engine, database *pgxpool.Pool, configuration config.C
 	v1.DELETE("/conversations/:id/archive", requireBearer(), setArchive(false))
 	v1.DELETE("/conversations/:id", requireBearer(), deleteConversation)
 	v1.PATCH("/conversations/:id/preferences", requireBearer(), updateConversationPreferences)
+	v1.PATCH("/conversations/:id/disappearing", requireBearer(), updateDisappearingMessages)
 	v1.POST("/media/presign", requireBearer(), presignMedia)
 	v1.POST("/media/complete", requireBearer(), completeMediaMessage)
 	v1.POST("/media/upload", requireBearer(), uploadMediaMessage)

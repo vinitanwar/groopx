@@ -34,6 +34,7 @@ var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { retu
 
 func listConversations(c *gin.Context) {
 	userID := c.GetString("user_id")
+	_,_=db.Exec(c.Request.Context(),`UPDATE messages SET body='',metadata='{}'::jsonb,deleted_at=NOW() WHERE deleted_at IS NULL AND expires_at<=NOW()`)
 	archived := c.Query("archived") == "true"
 	rows, err := db.Query(c.Request.Context(), `
 		SELECT c.id::text, c.kind::text,
@@ -101,16 +102,17 @@ func getConversationDetails(c *gin.Context) {
 	var lastSeen *time.Time
 	var memberCount int
 	var blockedByMe, communicationBlocked bool
+	var disappearingSeconds int
 	err := db.QueryRow(c.Request.Context(), `SELECT c.kind::text, COALESCE(c.title,other.full_name,other.phone,'Conversation'),
 		COALESCE(c.avatar_url,other.avatar_url),other.id::text,other.show_online_status,other.last_seen_at,
 		(SELECT COUNT(*)::int FROM conversation_members cm WHERE cm.conversation_id=c.id),
 		COALESCE(EXISTS(SELECT 1 FROM user_blocks b WHERE b.blocker_id=$2 AND b.blocked_id=other.id),FALSE),
-		COALESCE(EXISTS(SELECT 1 FROM user_blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=other.id) OR (b.blocker_id=other.id AND b.blocked_id=$2)),FALSE)
+		COALESCE(EXISTS(SELECT 1 FROM user_blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=other.id) OR (b.blocker_id=other.id AND b.blocked_id=$2)),FALSE),c.disappearing_seconds
 		FROM conversations c JOIN conversation_members mine ON mine.conversation_id=c.id AND mine.user_id=$2
 		LEFT JOIN conversation_members om ON c.kind='direct' AND om.conversation_id=c.id AND om.user_id<>$2
-		LEFT JOIN users other ON other.id=om.user_id WHERE c.id=$1`, conversationID, userID).Scan(&kind, &title, &avatar, &otherID, &showOnline, &lastSeen, &memberCount, &blockedByMe, &communicationBlocked)
+		LEFT JOIN users other ON other.id=om.user_id WHERE c.id=$1`, conversationID, userID).Scan(&kind, &title, &avatar, &otherID, &showOnline, &lastSeen, &memberCount, &blockedByMe, &communicationBlocked,&disappearingSeconds)
 	if err != nil { c.JSON(http.StatusNotFound, gin.H{"error": "conversation not found"}); return }
-	response := gin.H{"id":conversationID,"kind":kind,"title":title,"avatar_url":avatar,"member_count":memberCount,"online":false,"other_user_id":otherID,"blocked_by_me":blockedByMe,"communication_blocked":communicationBlocked}
+	response := gin.H{"id":conversationID,"kind":kind,"title":title,"avatar_url":avatar,"member_count":memberCount,"online":false,"other_user_id":otherID,"blocked_by_me":blockedByMe,"communication_blocked":communicationBlocked,"disappearing_seconds":disappearingSeconds}
 	if kind == "direct" && otherID != nil && showOnline != nil && *showOnline {
 		response["online"] = isUserOnline(*otherID)
 		response["last_seen_at"] = lastSeen
@@ -121,6 +123,7 @@ func getConversationDetails(c *gin.Context) {
 func listMessages(c *gin.Context) {
 	conversationID, userID := c.Param("id"), c.GetString("user_id")
 	if !isConversationMember(c, conversationID, userID) { c.JSON(http.StatusForbidden, gin.H{"error": "not a conversation member"}); return }
+	expireConversationMessages(c.Request.Context(),conversationID)
 	beforeTime, beforeID := time.Now().Add(time.Second), "ffffffff-ffff-ffff-ffff-ffffffffffff"
 	if raw := c.Query("before"); raw != "" {
 		decoded, err := base64.RawURLEncoding.DecodeString(raw)
@@ -164,6 +167,7 @@ func listMessages(c *gin.Context) {
 func searchMessages(c *gin.Context) {
 	conversationID,userID:=c.Param("id"),c.GetString("user_id"); query:=strings.TrimSpace(c.Query("q"))
 	if !isConversationMember(c,conversationID,userID){c.JSON(http.StatusForbidden,gin.H{"error":"not a conversation member"});return}
+	expireConversationMessages(c.Request.Context(),conversationID)
 	if len([]rune(query))<2 { c.JSON(http.StatusOK,gin.H{"items":[]gin.H{}});return }
 	rows,err:=db.Query(c.Request.Context(),`SELECT id::text,COALESCE(sender_id::text,''),body,kind::text,status::text,created_at,edited_at FROM messages
 		WHERE conversation_id=$1 AND deleted_at IS NULL AND body ILIKE $2 ORDER BY created_at DESC LIMIT 50`,conversationID,"%"+query+"%")
@@ -175,6 +179,7 @@ func searchMessages(c *gin.Context) {
 func listStarredMessages(c *gin.Context) {
 	conversationID,userID:=c.Param("id"),c.GetString("user_id")
 	if !isConversationMember(c,conversationID,userID){c.JSON(http.StatusForbidden,gin.H{"error":"not a conversation member"});return}
+	expireConversationMessages(c.Request.Context(),conversationID)
 	rows,err:=db.Query(c.Request.Context(),`SELECT m.id::text,COALESCE(m.sender_id::text,''),m.body,m.kind::text,m.metadata,m.status::text,m.created_at,m.edited_at
 		FROM message_stars s JOIN messages m ON m.id=s.message_id
 		WHERE s.user_id=$1 AND m.conversation_id=$2 AND m.deleted_at IS NULL ORDER BY s.created_at DESC LIMIT 200`,userID,conversationID)
@@ -190,6 +195,7 @@ func unstarMessage(c *gin.Context){_,err:=db.Exec(c.Request.Context(),`DELETE FR
 func listPinnedMessages(c *gin.Context){
 	conversationID,userID:=c.Param("id"),c.GetString("user_id")
 	if !isConversationMember(c,conversationID,userID){c.JSON(http.StatusForbidden,gin.H{"error":"not a conversation member"});return}
+	expireConversationMessages(c.Request.Context(),conversationID)
 	rows,err:=db.Query(c.Request.Context(),`SELECT m.id::text,COALESCE(m.sender_id::text,''),m.body,m.kind::text,m.metadata,m.status::text,m.created_at,m.edited_at
 		FROM message_pins p JOIN messages m ON m.id=p.message_id WHERE p.conversation_id=$1 AND m.deleted_at IS NULL ORDER BY p.created_at DESC`,conversationID)
 	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"pinned messages could not be loaded"});return};defer rows.Close()

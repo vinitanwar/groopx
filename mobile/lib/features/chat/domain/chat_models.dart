@@ -31,7 +31,7 @@ class ChatSummary {
 }
 
 class ConversationDetails {
-  const ConversationDetails({required this.title, required this.group, required this.online, required this.memberCount, this.avatarUrl, this.lastSeen, this.otherUserId, this.blockedByMe = false, this.communicationBlocked = false});
+  const ConversationDetails({required this.title, required this.group, required this.online, required this.memberCount, this.avatarUrl, this.lastSeen, this.otherUserId, this.blockedByMe = false, this.communicationBlocked = false, this.disappearingSeconds = 0});
   factory ConversationDetails.fromJson(Map<String, dynamic> json) => ConversationDetails(
     title: json['title'] as String? ?? 'Conversation',
     group: json['kind'] != 'direct',
@@ -42,6 +42,7 @@ class ConversationDetails {
     otherUserId: json['other_user_id'] as String?,
     blockedByMe: json['blocked_by_me'] as bool? ?? false,
     communicationBlocked: json['communication_blocked'] as bool? ?? false,
+    disappearingSeconds: json['disappearing_seconds'] as int? ?? 0,
   );
   final String title;
   final bool group;
@@ -52,6 +53,7 @@ class ConversationDetails {
   final String? otherUserId;
   final bool blockedByMe;
   final bool communicationBlocked;
+  final int disappearingSeconds;
 }
 
 class MessageReaction {
