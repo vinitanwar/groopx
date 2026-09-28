@@ -45,6 +45,7 @@ func Register(router *gin.Engine, database *pgxpool.Pool, configuration config.C
 	v1.GET("/conversations/:id/messages/search", requireBearer(), searchMessages)
 	v1.GET("/conversations/:id/messages/starred", requireBearer(), listStarredMessages)
 	v1.GET("/conversations/:id/messages/pinned", requireBearer(), listPinnedMessages)
+	v1.GET("/messages/:id/info", requireBearer(), messageInfo)
 	v1.GET("/conversations/:id/media", requireBearer(), listConversationMedia)
 	v1.POST("/conversations/:id/read", requireBearer(), markConversationRead)
 	v1.PATCH("/messages/:id", requireBearer(), editMessage)

@@ -65,7 +65,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
           _refreshMessages();
         } else if(event['type']=='disappearing_update'){
           _refreshDetails();
-        } else if (event['type'] == 'read_receipt') {
+        } else if (event['type'] == 'read_receipt' || event['type']=='delivery_receipt') {
           _refreshMessages();
         } else if (event['type'] == 'presence' && event['mine'] != true && mounted) {
           setState(() => details = ConversationDetails(title: details?.title ?? 'Conversation', group: details?.group ?? false, online: event['online'] == true, memberCount: details?.memberCount ?? 0, lastSeen: event['online'] == true ? details?.lastSeen : DateTime.now(), otherUserId: details?.otherUserId, blockedByMe: details?.blockedByMe ?? false, communicationBlocked: details?.communicationBlocked ?? false,disappearingSeconds:details?.disappearingSeconds??0));
@@ -191,6 +191,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       ListTile(leading: const Icon(Icons.forward), title: const Text('Forward'), onTap: () => Navigator.pop(context, 'forward')),
       ListTile(leading:Icon(message.starred?Icons.star:Icons.star_border,color:message.starred?Colors.amber:null),title:Text(message.starred?'Unstar message':'Star message'),onTap:()=>Navigator.pop(context,'star')),
       ListTile(leading:Icon(message.pinned?Icons.push_pin:Icons.push_pin_outlined,color:message.pinned?authPurple:null),title:Text(message.pinned?'Unpin message':'Pin message'),onTap:()=>Navigator.pop(context,'pin')),
+      if(message.mine)ListTile(leading:const Icon(Icons.info_outline),title:const Text('Message info'),onTap:()=>Navigator.pop(context,'info')),
       if (message.mine && message.kind == 'text') ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Edit message'), onTap: () => Navigator.pop(context, 'edit')),
       if (message.mine) ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('Delete message', style: TextStyle(color: Colors.red)), onTap: () => Navigator.pop(context, 'delete')),
     ])));
@@ -199,6 +200,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (action == 'forward') { await _forwardMessage(message); return; }
     if(action=='star'){
       await ChatApi.instance.setStarred(message.id,!message.starred);
+    }else if(action=='info'){
+      await context.push('/message/${message.id}/info');return;
     }else if(action=='pin'){
       try{await ChatApi.instance.setPinned(message.id,!message.pinned);}catch(failure){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(_uploadError(failure))));}
     }else if (action.startsWith('reaction:')) {

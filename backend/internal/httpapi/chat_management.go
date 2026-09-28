@@ -26,6 +26,17 @@ func updateDisappearingMessages(c *gin.Context){
 	c.JSON(http.StatusOK,gin.H{"conversation_id":conversationID,"disappearing_seconds":input.Seconds})
 }
 
+func messageInfo(c *gin.Context){
+	messageID,userID:=c.Param("id"),c.GetString("user_id")
+	var conversationID,body,kind string;var createdAt time.Time
+	err:=db.QueryRow(c.Request.Context(),`SELECT conversation_id::text,COALESCE(body,''),kind::text,created_at FROM messages WHERE id=$1 AND sender_id=$2 AND deleted_at IS NULL`,messageID,userID).Scan(&conversationID,&body,&kind,&createdAt)
+	if err!=nil{c.JSON(http.StatusNotFound,gin.H{"error":"message info is available for your messages only"});return}
+	rows,err:=db.Query(c.Request.Context(),`SELECT r.user_id::text,COALESCE(u.full_name,u.username,u.phone,'GroopX user'),COALESCE(u.avatar_url,''),r.delivered_at,r.read_at FROM message_receipts r JOIN users u ON u.id=r.user_id WHERE r.message_id=$1 ORDER BY COALESCE(r.read_at,r.delivered_at) DESC NULLS LAST`,messageID)
+	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"message info could not be loaded"});return};defer rows.Close()
+	recipients:=make([]gin.H,0);for rows.Next(){var id,name,avatar string;var deliveredAt,readAt *time.Time;if rows.Scan(&id,&name,&avatar,&deliveredAt,&readAt)==nil{recipients=append(recipients,gin.H{"user_id":id,"name":name,"avatar_url":avatar,"delivered_at":deliveredAt,"read_at":readAt})}}
+	c.JSON(http.StatusOK,gin.H{"id":messageID,"conversation_id":conversationID,"text":body,"kind":kind,"created_at":createdAt,"recipients":recipients})
+}
+
 func listConversationMedia(c *gin.Context) {
 	conversationID,userID:=c.Param("id"),c.GetString("user_id")
 	if !isConversationMember(c,conversationID,userID){c.JSON(http.StatusForbidden,gin.H{"error":"not a conversation member"});return}

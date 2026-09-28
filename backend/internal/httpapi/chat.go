@@ -234,7 +234,8 @@ func markConversationRead(c *gin.Context) {
 		var receipts bool
 		_ = db.QueryRow(c.Request.Context(), `SELECT read_receipts FROM users WHERE id=$1`, userID).Scan(&receipts)
 		if receipts {
-			_, _ = db.Exec(c.Request.Context(), `UPDATE messages SET status='read' WHERE conversation_id=$1 AND sender_id<>$2 AND status<>'read'`, conversationID, userID)
+			_, _ = db.Exec(c.Request.Context(), `UPDATE message_receipts r SET delivered_at=COALESCE(delivered_at,NOW()),read_at=NOW() FROM messages m WHERE r.message_id=m.id AND r.user_id=$2 AND m.conversation_id=$1 AND m.created_at<=$3 AND r.read_at IS NULL`, conversationID,userID,messageCreatedAt)
+			_, _ = db.Exec(c.Request.Context(), `UPDATE messages m SET status=CASE WHEN NOT EXISTS(SELECT 1 FROM message_receipts r WHERE r.message_id=m.id AND r.read_at IS NULL) THEN 'read'::message_status WHEN NOT EXISTS(SELECT 1 FROM message_receipts r WHERE r.message_id=m.id AND r.delivered_at IS NULL) THEN 'delivered'::message_status ELSE m.status END WHERE m.conversation_id=$1 AND m.sender_id<>$2`, conversationID,userID)
 			broadcast(conversationID, userID, gin.H{"type":"read_receipt","conversation_id":conversationID})
 		}
 	}
@@ -250,6 +251,10 @@ func chatSocket(c *gin.Context) {
 	client := &socketClient{connection: conn, userID: userID}
 	room := conversationID; if room == "" { room = "user:"+userID }
 	joinRoom(room, client)
+	if conversationID!=""{
+		_,_=db.Exec(c.Request.Context(),`UPDATE message_receipts r SET delivered_at=COALESCE(delivered_at,NOW()) FROM messages m WHERE r.message_id=m.id AND r.user_id=$2 AND m.conversation_id=$1 AND r.delivered_at IS NULL`,conversationID,userID)
+		broadcast(conversationID,userID,gin.H{"type":"delivery_receipt","conversation_id":conversationID})
+	}
 	announceUserPresence(userID, true)
 	defer func() {
 		if conversationID != "" { broadcast(conversationID,userID,gin.H{"type":"typing","user_id":userID,"typing":false}) }
@@ -310,5 +315,5 @@ func announcePresence(room, userID string, online bool) {
 }
 func broadcast(room, senderID string, payload gin.H) {
 	chatHub.RLock(); clients := make([]*socketClient, 0, len(chatHub.rooms[room])); for client := range chatHub.rooms[room] { clients = append(clients, client) }; chatHub.RUnlock()
-	for _, client := range clients { message := gin.H{}; for key, value := range payload { message[key] = value }; message["mine"] = client.userID == senderID; if client.writeJSON(message) != nil { leaveRoom(room, client) } }
+	for _, client := range clients { message := gin.H{}; for key, value := range payload { message[key] = value }; message["mine"] = client.userID == senderID;if payload["type"]=="message"&&client.userID!=senderID{if id,ok:=payload["id"].(string);ok{_,_=db.Exec(context.Background(),`UPDATE message_receipts SET delivered_at=COALESCE(delivered_at,NOW()) WHERE message_id=$1 AND user_id=$2`,id,client.userID)}}; if client.writeJSON(message) != nil { leaveRoom(room, client) } }
 }

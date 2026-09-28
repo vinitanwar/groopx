@@ -77,7 +77,20 @@ class ChatApi {
   }
   Future<void> setStarred(String messageId,bool starred)async{if(starred){await _dio.post('/messages/$messageId/star');}else{await _dio.delete('/messages/$messageId/star');}}
   Future<void> setPinned(String messageId,bool pinned)async{if(pinned){await _dio.post('/messages/$messageId/pin');}else{await _dio.delete('/messages/$messageId/pin');}}
+  Future<MessageInfo> messageInfo(String messageId)async{final response=await _dio.get<Map<String,dynamic>>('/messages/$messageId/info');return MessageInfo.fromJson(response.data!);}
   Future<int> forwardMessage(String messageId,List<String> conversationIds)async{final response=await _dio.post<Map<String,dynamic>>('/messages/$messageId/forward',data:{'conversation_ids':conversationIds});return response.data?['forwarded_count'] as int? ?? 0;}
+}
+
+class MessageInfo{
+  const MessageInfo({required this.text,required this.kind,required this.createdAt,required this.recipients});
+  factory MessageInfo.fromJson(Map<String,dynamic> json)=>MessageInfo(text:json['text'] as String? ?? '',kind:json['kind'] as String? ?? 'text',createdAt:DateTime.parse(json['created_at'] as String).toLocal(),recipients:(json['recipients'] as List<dynamic>? ?? const[]).map((item)=>MessageReceipt.fromJson(item as Map<String,dynamic>)).toList());
+  final String text,kind;final DateTime createdAt;final List<MessageReceipt> recipients;
+}
+
+class MessageReceipt{
+  const MessageReceipt({required this.name,required this.avatarUrl,this.deliveredAt,this.readAt});
+  factory MessageReceipt.fromJson(Map<String,dynamic> json)=>MessageReceipt(name:json['name'] as String? ?? 'GroopX user',avatarUrl:json['avatar_url'] as String? ?? '',deliveredAt:DateTime.tryParse(json['delivered_at'] as String? ?? '')?.toLocal(),readAt:DateTime.tryParse(json['read_at'] as String? ?? '')?.toLocal());
+  final String name,avatarUrl;final DateTime? deliveredAt,readAt;
 }
 
 class MessagePage {

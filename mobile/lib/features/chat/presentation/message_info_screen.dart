@@ -1,0 +1,14 @@
+import 'package:flutter/material.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/groopx_ui.dart';
+import '../data/chat_api.dart';
+
+class MessageInfoScreen extends StatefulWidget{
+  const MessageInfoScreen({super.key,required this.messageId});final String messageId;
+  @override State<MessageInfoScreen> createState()=>_MessageInfoScreenState();
+}
+
+class _MessageInfoScreenState extends State<MessageInfoScreen>{MessageInfo? info;String? error;@override void initState(){super.initState();_load();}Future<void> _load()async{try{final value=await ChatApi.instance.messageInfo(widget.messageId);if(mounted)setState((){info=value;error=null;});}catch(_){if(mounted)setState(()=>error='Message info load nahi hui');}}
+  String _time(DateTime? value)=>value==null?'Not yet':'${value.day.toString().padLeft(2,'0')}/${value.month.toString().padLeft(2,'0')}/${value.year}  ${TimeOfDay.fromDateTime(value).format(context)}';
+  @override Widget build(BuildContext context){final value=info;return Scaffold(backgroundColor:AppColors.background,appBar:AppBar(title:const Text('Message info')),body:GroopXBackground(child:value==null?(error==null?const Center(child:CircularProgressIndicator(color:AppColors.purple)):GroopXEmptyState(icon:Icons.info_outline,title:'Unable to load',message:error!,actionLabel:'Retry',actionIcon:Icons.refresh,onAction:_load)):RefreshIndicator(onRefresh:_load,child:ListView(padding:const EdgeInsets.all(16),children:[Align(alignment:Alignment.centerRight,child:Container(constraints:const BoxConstraints(maxWidth:300),padding:const EdgeInsets.all(13),decoration:BoxDecoration(color:const Color(0xFFE9E1FF),borderRadius:BorderRadius.circular(14)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(value.kind=='text'?value.text:'${value.kind.toUpperCase()} attachment'),const SizedBox(height:5),Text(_time(value.createdAt),style:const TextStyle(fontSize:10,color:AppColors.muted))]))),const SizedBox(height:20),const Text('Recipients',style:TextStyle(fontSize:16,fontWeight:FontWeight.w800)),const SizedBox(height:8),if(value.recipients.isEmpty)const Card(child:ListTile(leading:Icon(Icons.hourglass_empty),title:Text('No recipients yet')))else ...value.recipients.map((item)=>Card(child:ListTile(leading:GroopXAvatar(label:item.name,imageUrl:item.avatarUrl),title:Text(item.name,style:const TextStyle(fontWeight:FontWeight.w700)),subtitle:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const SizedBox(height:5),Row(children:[const Icon(Icons.done_all,size:16,color:AppColors.purple),const SizedBox(width:6),Expanded(child:Text('Read: ${_time(item.readAt)}'))]),const SizedBox(height:3),Row(children:[Icon(Icons.done_all,size:16,color:item.deliveredAt==null?AppColors.muted:Colors.blueGrey),const SizedBox(width:6),Expanded(child:Text('Delivered: ${_time(item.deliveredAt)}'))])]))))]))));}
+}
