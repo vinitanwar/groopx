@@ -71,7 +71,7 @@ class ChatApi {
   Future<void> updatePreferences(String conversationId, {bool? favorite, bool? muted}) => _dio.patch('/conversations/$conversationId/preferences', data: {if (favorite != null) 'favorite': favorite, if (muted != null) 'muted': muted});
   Future<void> updateDisappearing(String conversationId,int seconds)=>_dio.patch('/conversations/$conversationId/disappearing',data:{'seconds':seconds});
   Future<void> editMessage(String messageId, String text) => _dio.patch('/messages/$messageId', data: {'text': text});
-  Future<void> deleteMessage(String messageId) => _dio.delete('/messages/$messageId');
+  Future<void> deleteMessage(String messageId,{required bool forEveryone}) => _dio.delete('/messages/$messageId',queryParameters:{'scope':forEveryone?'everyone':'me'});
   Future<void> react(String messageId, String emoji, {required bool add}) async {
     if (add) { await _dio.post('/messages/$messageId/reactions', data: {'emoji': emoji}); } else { await _dio.delete('/messages/$messageId/reactions', data: {'emoji': emoji}); }
   }

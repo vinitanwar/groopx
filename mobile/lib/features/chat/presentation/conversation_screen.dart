@@ -193,7 +193,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       ListTile(leading:Icon(message.pinned?Icons.push_pin:Icons.push_pin_outlined,color:message.pinned?authPurple:null),title:Text(message.pinned?'Unpin message':'Pin message'),onTap:()=>Navigator.pop(context,'pin')),
       if(message.mine)ListTile(leading:const Icon(Icons.info_outline),title:const Text('Message info'),onTap:()=>Navigator.pop(context,'info')),
       if (message.mine && message.kind == 'text') ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Edit message'), onTap: () => Navigator.pop(context, 'edit')),
-      if (message.mine) ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('Delete message', style: TextStyle(color: Colors.red)), onTap: () => Navigator.pop(context, 'delete')),
+      ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('Delete message', style: TextStyle(color: Colors.red)), onTap: () => Navigator.pop(context, 'delete')),
     ])));
     if (action == null) return;
     if (action == 'reply') { setState(() => replyingTo = message); return; }
@@ -208,7 +208,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
       final emoji = action.substring(9); final existing = message.reactions.where((item) => item.emoji == emoji && item.mine).isNotEmpty;
       await ChatApi.instance.react(message.id, emoji, add: !existing);
     } else if (action == 'delete') {
-      await ChatApi.instance.deleteMessage(message.id);
+      final scope=await showModalBottomSheet<bool>(context:context,builder:(sheetContext)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[const ListTile(title:Text('Delete message?',style:TextStyle(fontWeight:FontWeight.w800))),ListTile(leading:const Icon(Icons.delete_outline),title:const Text('Delete for me'),onTap:()=>Navigator.pop(sheetContext,false)),if(message.mine)ListTile(leading:const Icon(Icons.delete_forever_outlined,color:Colors.red),title:const Text('Delete for everyone',style:TextStyle(color:Colors.red)),onTap:()=>Navigator.pop(sheetContext,true)),ListTile(leading:const Icon(Icons.close),title:const Text('Cancel'),onTap:()=>Navigator.pop(sheetContext))])));
+      if(scope==null)return;
+      try{await ChatApi.instance.deleteMessage(message.id,forEveryone:scope);}catch(failure){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(_uploadError(failure))));return;}
     } else if (action == 'edit') {
       final controller = TextEditingController(text: message.text);
       final text = await showDialog<String>(context: context, builder: (dialogContext) => AlertDialog(title: const Text('Edit message'), content: TextField(controller: controller, autofocus: true, maxLines: 4), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Save'))]));

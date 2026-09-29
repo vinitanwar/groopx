@@ -48,10 +48,10 @@ func listConversations(c *gin.Context) {
 		LEFT JOIN users other ON other.id=other_member.user_id
 		LEFT JOIN LATERAL (
 			SELECT m.body, m.created_at FROM messages m
-			WHERE m.conversation_id=c.id AND m.deleted_at IS NULL ORDER BY m.created_at DESC LIMIT 1
+			WHERE m.conversation_id=c.id AND m.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM message_hidden_for h WHERE h.message_id=m.id AND h.user_id=mine.user_id) ORDER BY m.created_at DESC LIMIT 1
 		) last_message ON TRUE
 		LEFT JOIN messages unread ON unread.conversation_id=c.id AND unread.sender_id<>mine.user_id
-			AND unread.deleted_at IS NULL AND unread.created_at>COALESCE(mine.last_read_at, mine.joined_at)
+			AND unread.deleted_at IS NULL AND unread.created_at>COALESCE(mine.last_read_at, mine.joined_at) AND NOT EXISTS(SELECT 1 FROM message_hidden_for h WHERE h.message_id=unread.id AND h.user_id=mine.user_id)
 		WHERE mine.user_id=$1 AND (($2=TRUE AND mine.archived_at IS NOT NULL) OR ($2=FALSE AND mine.archived_at IS NULL)) AND mine.hidden_at IS NULL
 		GROUP BY c.id, other.full_name, other.phone, other.avatar_url, last_message.body, last_message.created_at,mine.favorite,mine.archived_at,mine.muted_until,mine.last_read_at
 		ORDER BY mine.favorite DESC,COALESCE(last_message.created_at, c.created_at) DESC`, userID, archived)
@@ -138,7 +138,7 @@ func listMessages(c *gin.Context) {
 		EXISTS(SELECT 1 FROM message_stars star WHERE star.message_id=messages.id AND star.user_id=$2),
 		EXISTS(SELECT 1 FROM message_pins pin WHERE pin.message_id=messages.id)
 		FROM messages LEFT JOIN messages reply ON reply.id=messages.reply_to_id
-		WHERE messages.conversation_id=$1 AND messages.deleted_at IS NULL AND (messages.created_at,messages.id)<($3,$4::uuid)
+		WHERE messages.conversation_id=$1 AND messages.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM message_hidden_for hidden WHERE hidden.message_id=messages.id AND hidden.user_id=$2) AND (messages.created_at,messages.id)<($3,$4::uuid)
 		ORDER BY messages.created_at DESC,messages.id DESC LIMIT 50`, conversationID, userID, beforeTime, beforeID)
 	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "messages could not be loaded"}); return }
 	defer rows.Close()
@@ -170,7 +170,7 @@ func searchMessages(c *gin.Context) {
 	expireConversationMessages(c.Request.Context(),conversationID)
 	if len([]rune(query))<2 { c.JSON(http.StatusOK,gin.H{"items":[]gin.H{}});return }
 	rows,err:=db.Query(c.Request.Context(),`SELECT id::text,COALESCE(sender_id::text,''),body,kind::text,status::text,created_at,edited_at FROM messages
-		WHERE conversation_id=$1 AND deleted_at IS NULL AND body ILIKE $2 ORDER BY created_at DESC LIMIT 50`,conversationID,"%"+query+"%")
+		WHERE conversation_id=$1 AND deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM message_hidden_for hidden WHERE hidden.message_id=messages.id AND hidden.user_id=$3) AND body ILIKE $2 ORDER BY created_at DESC LIMIT 50`,conversationID,"%"+query+"%",userID)
 	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"message search unavailable"});return};defer rows.Close();items:=make([]gin.H,0)
 	for rows.Next(){var id,senderID,body,kind,status string;var createdAt time.Time;var editedAt *time.Time;if rows.Scan(&id,&senderID,&body,&kind,&status,&createdAt,&editedAt)==nil{items=append(items,gin.H{"id":id,"sender_id":senderID,"text":body,"kind":kind,"status":status,"created_at":createdAt,"mine":senderID==userID,"edited":editedAt!=nil})}}
 	c.JSON(http.StatusOK,gin.H{"items":items})
@@ -182,7 +182,7 @@ func listStarredMessages(c *gin.Context) {
 	expireConversationMessages(c.Request.Context(),conversationID)
 	rows,err:=db.Query(c.Request.Context(),`SELECT m.id::text,COALESCE(m.sender_id::text,''),m.body,m.kind::text,m.metadata,m.status::text,m.created_at,m.edited_at
 		FROM message_stars s JOIN messages m ON m.id=s.message_id
-		WHERE s.user_id=$1 AND m.conversation_id=$2 AND m.deleted_at IS NULL ORDER BY s.created_at DESC LIMIT 200`,userID,conversationID)
+		WHERE s.user_id=$1 AND m.conversation_id=$2 AND m.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM message_hidden_for hidden WHERE hidden.message_id=m.id AND hidden.user_id=$1) ORDER BY s.created_at DESC LIMIT 200`,userID,conversationID)
 	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"starred messages could not be loaded"});return};defer rows.Close()
 	items:=make([]gin.H,0)
 	for rows.Next(){var id,senderID,body,kind,status string;var metadata []byte;var createdAt time.Time;var editedAt *time.Time;if rows.Scan(&id,&senderID,&body,&kind,&metadata,&status,&createdAt,&editedAt)!=nil{continue};item:=gin.H{"id":id,"sender_id":senderID,"text":body,"kind":kind,"status":status,"created_at":createdAt,"mine":senderID==userID,"edited":editedAt!=nil,"starred":true};var messageMetadata map[string]any;if json.Unmarshal(metadata,&messageMetadata)==nil{item["forwarded"]=messageMetadata["forwarded"]==true;if kind!="text"{item["attachment"]=messageMetadata}};items=append(items,item)}
@@ -197,7 +197,7 @@ func listPinnedMessages(c *gin.Context){
 	if !isConversationMember(c,conversationID,userID){c.JSON(http.StatusForbidden,gin.H{"error":"not a conversation member"});return}
 	expireConversationMessages(c.Request.Context(),conversationID)
 	rows,err:=db.Query(c.Request.Context(),`SELECT m.id::text,COALESCE(m.sender_id::text,''),m.body,m.kind::text,m.metadata,m.status::text,m.created_at,m.edited_at
-		FROM message_pins p JOIN messages m ON m.id=p.message_id WHERE p.conversation_id=$1 AND m.deleted_at IS NULL ORDER BY p.created_at DESC`,conversationID)
+		FROM message_pins p JOIN messages m ON m.id=p.message_id WHERE p.conversation_id=$1 AND m.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM message_hidden_for hidden WHERE hidden.message_id=m.id AND hidden.user_id=$2) ORDER BY p.created_at DESC`,conversationID,userID)
 	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"pinned messages could not be loaded"});return};defer rows.Close()
 	items:=make([]gin.H,0)
 	for rows.Next(){var id,senderID,body,kind,status string;var metadata []byte;var createdAt time.Time;var editedAt *time.Time;if rows.Scan(&id,&senderID,&body,&kind,&metadata,&status,&createdAt,&editedAt)!=nil{continue};item:=gin.H{"id":id,"sender_id":senderID,"text":body,"kind":kind,"status":status,"created_at":createdAt,"mine":senderID==userID,"edited":editedAt!=nil,"pinned":true};var messageMetadata map[string]any;if json.Unmarshal(metadata,&messageMetadata)==nil{item["forwarded"]=messageMetadata["forwarded"]==true;if kind!="text"{item["attachment"]=messageMetadata}};items=append(items,item)}
@@ -228,7 +228,7 @@ func markConversationRead(c *gin.Context) {
 	if !isConversationMember(c, conversationID, userID) { c.JSON(http.StatusForbidden, gin.H{"error": "not a conversation member"}); return }
 	var messageID string
 	var messageCreatedAt time.Time
-	err := db.QueryRow(c.Request.Context(), `SELECT id::text,created_at FROM messages WHERE conversation_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT 1`, conversationID).Scan(&messageID,&messageCreatedAt)
+	err := db.QueryRow(c.Request.Context(), `SELECT id::text,created_at FROM messages WHERE conversation_id=$1 AND deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM message_hidden_for hidden WHERE hidden.message_id=messages.id AND hidden.user_id=$2) ORDER BY created_at DESC,id DESC LIMIT 1`, conversationID,userID).Scan(&messageID,&messageCreatedAt)
 	if err == nil {
 		_, _ = db.Exec(c.Request.Context(), `UPDATE conversation_members SET last_read_message_id=$3,last_read_at=GREATEST(COALESCE(last_read_at,'epoch'::timestamptz),$4) WHERE conversation_id=$1 AND user_id=$2`, conversationID, userID, messageID, messageCreatedAt)
 		var receipts bool

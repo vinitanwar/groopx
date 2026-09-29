@@ -41,7 +41,7 @@ func listConversationMedia(c *gin.Context) {
 	conversationID,userID:=c.Param("id"),c.GetString("user_id")
 	if !isConversationMember(c,conversationID,userID){c.JSON(http.StatusForbidden,gin.H{"error":"not a conversation member"});return}
 	expireConversationMessages(c.Request.Context(),conversationID)
-	rows,err:=db.Query(c.Request.Context(),`SELECT id::text,kind::text,metadata,created_at FROM messages WHERE conversation_id=$1 AND kind<>'text' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200`,conversationID)
+	rows,err:=db.Query(c.Request.Context(),`SELECT id::text,kind::text,metadata,created_at FROM messages WHERE conversation_id=$1 AND kind<>'text' AND deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM message_hidden_for hidden WHERE hidden.message_id=messages.id AND hidden.user_id=$2) ORDER BY created_at DESC LIMIT 200`,conversationID,userID)
 	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"shared media could not be loaded"});return}
 	defer rows.Close();items:=make([]gin.H,0)
 	for rows.Next(){var id,kind string;var metadata []byte;var createdAt time.Time;if rows.Scan(&id,&kind,&metadata,&createdAt)==nil{var attachment map[string]any;if json.Unmarshal(metadata,&attachment)!=nil{attachment=map[string]any{}};items=append(items,gin.H{"id":id,"kind":kind,"attachment":attachment,"created_at":createdAt})}}
@@ -87,6 +87,11 @@ func editMessage(c *gin.Context) {
 }
 
 func deleteMessage(c *gin.Context) {
+	if c.Query("scope")=="me"{
+		result,err:=db.Exec(c.Request.Context(),`INSERT INTO message_hidden_for(message_id,user_id) SELECT m.id,$2 FROM messages m JOIN conversation_members cm ON cm.conversation_id=m.conversation_id AND cm.user_id=$2 WHERE m.id=$1 AND m.deleted_at IS NULL ON CONFLICT DO NOTHING`,c.Param("id"),c.GetString("user_id"))
+		if err!=nil||result.RowsAffected()==0{var exists bool;_ = db.QueryRow(c.Request.Context(),`SELECT EXISTS(SELECT 1 FROM message_hidden_for WHERE message_id=$1 AND user_id=$2)`,c.Param("id"),c.GetString("user_id")).Scan(&exists);if !exists{c.JSON(http.StatusNotFound,gin.H{"error":"message not found"});return}}
+		c.Status(http.StatusNoContent);return
+	}
 	var conversationID string
 	err := db.QueryRow(c.Request.Context(), `UPDATE messages SET body='',metadata='{}'::jsonb,deleted_at=NOW() WHERE id=$1 AND sender_id=$2 AND deleted_at IS NULL RETURNING conversation_id::text`, c.Param("id"), c.GetString("user_id")).Scan(&conversationID)
 	if err != nil { c.JSON(http.StatusNotFound, gin.H{"error":"message not found"}); return }
