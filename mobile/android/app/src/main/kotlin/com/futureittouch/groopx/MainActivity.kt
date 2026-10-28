@@ -282,11 +282,6 @@ class MainActivity : FlutterActivity() {
         playingUrl = null
     }
 
-    override fun onDestroy() {
-        releasePlayer()
-        super.onDestroy()
-    }
-
     @Suppress("DEPRECATION")
     private fun startRecording(result: MethodChannel.Result) {
         if (recorder != null) {
