@@ -131,7 +131,7 @@ class LiveLocationService extends ChangeNotifier {
 
   LocationSettings get _streamSettings{
     if(defaultTargetPlatform==TargetPlatform.android){
-      return const AndroidSettings(
+      return AndroidSettings(
         accuracy:LocationAccuracy.high,
         distanceFilter:10,
         intervalDuration:Duration(seconds:12),
