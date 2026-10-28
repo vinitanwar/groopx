@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "387442400430",
+    "project_id": "groopx-9a87e",
+    "storage_bucket": "groopx-9a87e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:387442400430:android:3cecbd1d1739976507213f",
+        "android_client_info": {
+          "package_name": "com.futureittouch.groopx"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCGHCqH1aWKxNUgI6KopJa-D4lhQkOlRZE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
