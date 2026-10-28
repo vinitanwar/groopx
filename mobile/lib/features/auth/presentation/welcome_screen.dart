@@ -10,7 +10,11 @@ class WelcomeScreen extends StatelessWidget {
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final scale = constraints.maxWidth / 375;
+          final widthScale = constraints.maxWidth / 375;
+          final heightScale = constraints.maxHeight / 812;
+          final scale = (widthScale < heightScale ? widthScale : heightScale)
+              .clamp(0.8, 1.0)
+              .toDouble();
           return Stack(
             fit: StackFit.expand,
             children: [
@@ -24,13 +28,24 @@ class WelcomeScreen extends StatelessWidget {
                 ),
               ),
               SafeArea(
-                child: Column(
-                  children: [
-                    SizedBox(height: 51 * scale),
-                    _Brand(scale: scale),
-                    const Spacer(),
-                    _WelcomePanel(scale: scale),
-                  ],
+                child: LayoutBuilder(
+                  builder: (context, safeConstraints) => SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: safeConstraints.maxHeight,
+                      ),
+                      child: IntrinsicHeight(
+                        child: Column(
+                          children: [
+                            SizedBox(height: 51 * scale),
+                            _Brand(scale: scale),
+                            const Spacer(),
+                            _WelcomePanel(scale: scale),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
