@@ -137,7 +137,7 @@ class _WelcomePanel extends StatelessWidget {
                 onPressed: () => context.go('/invite-code'),
                 iconAlignment: IconAlignment.end,
                 icon: Icon(Icons.group_add_outlined, color: AppColors.purple, size: 22 * scale),
-                label: const Expanded(child: Text('JOIN WITH INVITE CODE')),
+                label: const Text('JOIN WITH INVITE CODE'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.purple,
                   side: const BorderSide(color: AppColors.purple),
