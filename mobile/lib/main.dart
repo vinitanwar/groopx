@@ -61,9 +61,19 @@ final rootNavigatorKey = GlobalKey<NavigatorState>();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  final hasSession = await AuthSession.instance.hasSession;
-  if(hasSession)unawaited(LiveLocationService.instance.initialize());
+  var hasSession = false;
+  try {
+    hasSession = await AuthSession.instance.hasSession.timeout(
+      const Duration(seconds: 3),
+    );
+  } catch (_) {
+    // A stale Android keystore entry must never keep the app on its native
+    // launch screen. Fall back to authentication and let the user sign in.
+  }
   runApp(GroopXApp(initialLocation: hasSession ? '/chats' : '/'));
+  if (hasSession) {
+    unawaited(LiveLocationService.instance.initialize().catchError((_) {}));
+  }
 }
 
 GoRouter _createRouter(String initialLocation) => GoRouter(
