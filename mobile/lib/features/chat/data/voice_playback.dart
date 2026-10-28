@@ -3,6 +3,15 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+const voicePlaybackSpeeds = <double>[1, 1.5, 2];
+
+double nextVoicePlaybackSpeed(double current) {
+  final index = voicePlaybackSpeeds.indexWhere(
+    (value) => (value - current).abs() < 0.01,
+  );
+  return voicePlaybackSpeeds[(index + 1) % voicePlaybackSpeeds.length];
+}
+
 class VoicePlaybackController extends ChangeNotifier {
   VoicePlaybackController._() {
     _channel.setMethodCallHandler((call) async {
@@ -13,6 +22,13 @@ class VoicePlaybackController extends ChangeNotifier {
           positionMs = call.method == 'playbackCompleted' ? durationMs : 0;
           if (call.method == 'playbackError') currentUrl = null;
           _timer?.cancel();
+          notifyListeners();
+        }
+      }
+      if (call.method == 'playbackSpeedChanged') {
+        final value = call.arguments;
+        if (value is num) {
+          speed = value.toDouble();
           notifyListeners();
         }
       }
@@ -27,6 +43,7 @@ class VoicePlaybackController extends ChangeNotifier {
   bool loading = false;
   int positionMs = 0;
   int durationMs = 0;
+  double speed = 1;
   Timer? _timer;
 
   bool isCurrent(String url) => currentUrl == url;
@@ -76,6 +93,14 @@ class VoicePlaybackController extends ChangeNotifier {
     positionMs = value.clamp(0, durationMs).toInt();
     notifyListeners();
     await _channel.invokeMethod<void>('seek', positionMs);
+  }
+
+  Future<void> cycleSpeed(String url) async {
+    if (!isCurrent(url) || loading) return;
+    final requested = nextVoicePlaybackSpeed(speed);
+    final applied = await _channel.invokeMethod<num>('setSpeed', requested);
+    speed = applied?.toDouble() ?? requested;
+    notifyListeners();
   }
 
   void _startTimer() {

@@ -1,0 +1,2 @@
+ALTER TABLE conversation_members
+  ADD COLUMN IF NOT EXISTS manual_unread BOOLEAN NOT NULL DEFAULT FALSE;

@@ -1,0 +1,3 @@
+ALTER TABLE conversations
+    ADD COLUMN IF NOT EXISTS members_can_edit_info BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS members_can_add_members BOOLEAN NOT NULL DEFAULT FALSE;

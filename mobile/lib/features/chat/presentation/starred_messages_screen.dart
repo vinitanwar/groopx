@@ -36,13 +36,13 @@ class _StarredMessagesScreenState extends State<StarredMessagesScreen>{
                 separatorBuilder:(_,__)=>const SizedBox(height:8),
                 itemBuilder:(_,index){
                   final item=items[index];
-                  final label=item.kind=='text'?item.text:(item.attachment?['file_name']?.toString()??item.text);
+                  final label=item.viewOnce?item.text:item.kind=='text'?item.text:(item.attachment?['file_name']?.toString()??item.text);
                   final url=item.attachment?['url']?.toString()??'';
                   return Card(child:ListTile(
                     onTap:url.isNotEmpty?()=>context.push('/attachment',extra:<String,String>{'kind':item.kind,'name':label,'url':url}):null,
                     leading:const CircleAvatar(backgroundColor:Color(0xFFFFF3D5),child:Icon(Icons.star,color:Color(0xFFFFB300))),
                     title:Text(label,maxLines:3,overflow:TextOverflow.ellipsis),
-                    subtitle:Text('${item.mine?'You':'Contact'} · ${item.time}'),
+                    subtitle:Text('${item.mine?'You':(item.senderName.isEmpty?'Contact':item.senderName)} · ${item.time}'),
                     trailing:IconButton(tooltip:'Unstar',onPressed:()=>_remove(item),icon:const Icon(Icons.star_outline)),
                   ));
                 },

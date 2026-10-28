@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/groopx_ui.dart';
@@ -7,9 +8,9 @@ import '../../auth/data/auth_api.dart';
 class PrivacySettingsScreen extends StatelessWidget {
   const PrivacySettingsScreen({super.key});
   @override
-  Widget build(BuildContext context) => const _SettingsScreen(title: 'Privacy', icon: Icons.lock_outline, message: 'Control what other GroopX users can see.', definitions: [
+  Widget build(BuildContext context) => const _SettingsScreen(title: 'Privacy', icon: Icons.lock_outline, message: 'Control what other GroopX users can see.', linkedTitle: 'Status privacy', linkedSubtitle: 'Choose who can see your text, photo and video updates', linkedRoute: '/statuses/privacy', definitions: [
     _SettingDefinition('show_online_status', 'Online status', 'Contacts ko aapka live online status aur last seen dikhai dega.'),
-    _SettingDefinition('read_receipts', 'Read receipts', 'Message read karne par sender ko read indicator dikhai dega.'),
+    _SettingDefinition('read_receipts', 'Read receipts', 'Message read indicators aur status viewer list ko control karta hai.'),
   ]);
 }
 
@@ -30,8 +31,9 @@ class _SettingDefinition {
 }
 
 class _SettingsScreen extends StatefulWidget {
-  const _SettingsScreen({required this.title, required this.icon, required this.message, required this.definitions});
+  const _SettingsScreen({required this.title, required this.icon, required this.message, required this.definitions, this.linkedTitle, this.linkedSubtitle, this.linkedRoute});
   final String title, message;
+  final String? linkedTitle, linkedSubtitle, linkedRoute;
   final IconData icon;
   final List<_SettingDefinition> definitions;
   @override
@@ -92,6 +94,17 @@ class _SettingsScreenState extends State<_SettingsScreen> {
                 if (index < widget.definitions.length - 1) const Divider(height: 1, indent: 16, endIndent: 16),
               ],
             ])),
+            if (widget.linkedRoute != null) ...[
+              const SizedBox(height: 14),
+              Card(child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                leading: const Icon(Icons.auto_awesome_outlined, color: AppColors.purple),
+                title: Text(widget.linkedTitle!, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.text)),
+                subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text(widget.linkedSubtitle!, style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35))),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push(widget.linkedRoute!),
+              )),
+            ],
           ])),
   );
 

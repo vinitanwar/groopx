@@ -28,17 +28,29 @@ class MediaApi {
   static final instance = MediaApi._();
   final Dio _dio = Dio(BaseOptions(baseUrl: const String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:8080/api/v1'), connectTimeout: const Duration(seconds: 15), receiveTimeout: const Duration(seconds: 20)));
 
-  Future<void> pickAndUpload({required String conversationId, required FileType type, required void Function(double) onProgress}) async {
-    final selection = await FilePicker.platform.pickFiles(type: type, allowMultiple: false, withData: false);
-    final file = selection?.files.single;
-    if (file == null) return;
-    if (file.path == null) throw StateError('The selected file is unavailable');
-    await uploadFile(conversationId:conversationId,path:file.path!,fileName:file.name,size:file.size,onProgress:onProgress);
+  Future<void> pickAndUpload({required String conversationId, required FileType type, required void Function(double) onProgress,bool allowMultiple=false,bool viewOnce=false}) async {
+    final selection = await FilePicker.platform.pickFiles(type: type, allowMultiple: viewOnce?false:allowMultiple, withData: false);
+    final files=selection?.files??const[];
+    if(files.isEmpty)return;
+    if(files.length>10)throw StateError('Ek baar mein maximum 10 files select karein');
+    for(var index=0;index<files.length;index++){
+      final file=files[index];
+      if(file.path==null)throw StateError('${file.name} selected file unavailable hai');
+      await uploadFile(conversationId:conversationId,path:file.path!,fileName:file.name,size:file.size,viewOnce:viewOnce,onProgress:(value)=>onProgress((index+value)/files.length));
+    }
   }
 
-  Future<void> uploadFile({required String conversationId,required String path,required String fileName,required int size,required void Function(double) onProgress,int durationMs=0}) async {
+  Future<void> uploadFile({required String conversationId,required String path,required String fileName,required int size,required void Function(double) onProgress,int durationMs=0,bool viewOnce=false}) async {
     if (size > 200 * 1024 * 1024) throw StateError('Maximum file size is 200 MB');
     final contentType = _contentType(fileName);
+    if(viewOnce){
+      if(!contentType.startsWith('image/')&&!contentType.startsWith('video/'))throw StateError('View once sirf photo aur video ke liye available hai');
+      if(size>25*1024*1024)throw StateError('View once photo ya video maximum 25 MB ho sakti hai');
+      final form=FormData.fromMap({'conversation_id':conversationId,'duration_ms':durationMs,'view_once':true,'file':await MultipartFile.fromFile(path,filename:fileName,contentType:MediaType.parse(contentType))});
+      await _dio.post('/media/upload',data:form,options:Options(sendTimeout:const Duration(minutes:5),receiveTimeout:const Duration(minutes:5)),onSendProgress:(sent,total)=>onProgress(total<=0?0:sent/total));
+      onProgress(1);
+      return;
+    }
     try {
       final presign = await _dio.post<Map<String, dynamic>>('/media/presign', data: {'file_name': fileName, 'content_type': contentType, 'size': size});
       final data = presign.data ?? <String, dynamic>{};
@@ -48,7 +60,7 @@ class MediaApi {
     } on DioException catch (failure) {
       if (failure.response?.statusCode != 503) rethrow;
       if (size > 25 * 1024 * 1024) throw StateError('External storage configure hone tak maximum attachment size 25 MB hai');
-      final form=FormData.fromMap({'conversation_id':conversationId,'duration_ms':durationMs,'file':await MultipartFile.fromFile(path,filename:fileName,contentType:MediaType.parse(contentType))});
+      final form=FormData.fromMap({'conversation_id':conversationId,'duration_ms':durationMs,'view_once':false,'file':await MultipartFile.fromFile(path,filename:fileName,contentType:MediaType.parse(contentType))});
       await _dio.post('/media/upload',data:form,options:Options(sendTimeout:const Duration(minutes:5),receiveTimeout:const Duration(minutes:5)),onSendProgress:(sent,total)=>onProgress(total<=0?0:sent/total));
     }
     onProgress(1);

@@ -32,6 +32,7 @@ The UI is reconstructed from the supplied Figma reference at a 375×812 design b
 - Contact info, group editing and shared media/documents screens
 - Storage/data, Help/About, notification detail and avatar preview screens
 - Linked Devices with active-session history, individual remote logout and secure logout from all other devices
+- Contact-grouped 24-hour text/photo/video statuses with camera/gallery preview, continuous cross-contact playback, swipe-to-close/reply gestures, playback controls, audience and read-receipt privacy, mute/report/block safety controls, private likes, reaction insights, viewers, quick reactions, private chat replies and share-to-chat
 - Admin announcements with in-app/FCM delivery and integration health dashboard
 
 LiveKit requires `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` environment variables.
@@ -84,9 +85,22 @@ The app registers FCM device tokens, handles foreground alerts, and opens the
 correct chat or call when a notification is tapped from background or a closed
 state. Add the Firebase Android configuration file at
 `mobile/android/app/google-services.json` using the final Android application ID.
-On Render, set `GOOGLE_APPLICATION_CREDENTIALS` to the mounted Firebase service
-account JSON path. Keep both Firebase files and service-account credentials out
-of Git.
+On Render, add one of these secret environment variables:
+
+- `FIREBASE_SERVICE_ACCOUNT_BASE64` — recommended for copy/paste setup
+- `FIREBASE_SERVICE_ACCOUNT_JSON` — the complete service-account JSON
+- `GOOGLE_APPLICATION_CREDENTIALS` — a mounted JSON file's absolute path
+
+To copy a service-account file as base64 from Windows PowerShell:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\Downloads\firebase-service-account.json")) | Set-Clipboard
+```
+
+Paste the clipboard value into Render's `FIREBASE_SERVICE_ACCOUNT_BASE64`
+environment variable and redeploy. A healthy startup log includes
+`FCM enabled using FIREBASE_SERVICE_ACCOUNT_BASE64`. Keep Firebase files and
+service-account credentials out of Git.
 
 ## Android release identity and signing
 

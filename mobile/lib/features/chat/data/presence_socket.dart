@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../auth/data/auth_api.dart';
 
@@ -9,9 +10,12 @@ class PresenceSocket {
   StreamSubscription? _subscription;
   Timer? _retry;
   bool _stopped=false;
+  final _events=StreamController<Map<String,dynamic>>.broadcast();
+  Stream<Map<String,dynamic>> get events=>_events.stream;
 
   Future<void> start() async {
     _stopped=false;
+    if(_channel!=null)return;
     await _connect();
   }
   Future<void> _connect() async {
@@ -23,7 +27,7 @@ class PresenceSocket {
     try{
       final channel=WebSocketChannel.connect(uri);await channel.ready;
       _channel=channel;
-      _subscription=channel.stream.listen((_) {},onError:(_)=>_schedule(),onDone:_schedule,cancelOnError:true);
+      _subscription=channel.stream.listen((value){try{final decoded=jsonDecode(value as String);if(decoded is Map)_events.add(Map<String,dynamic>.from(decoded));}catch(_){}},onError:(_){_channel=null;_schedule();},onDone:(){_channel=null;_schedule();},cancelOnError:true);
     }catch(_){_schedule();}
   }
   void _schedule(){if(_stopped)return;_retry?.cancel();_retry=Timer(const Duration(seconds:3),_connect);}

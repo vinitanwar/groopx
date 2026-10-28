@@ -47,9 +47,12 @@ func completeMediaMessage(c *gin.Context) {
 		ContentType string `json:"content_type" binding:"required,max=120"`
 		Size int64 `json:"size" binding:"required,gt=0,lte=209715200"`
 		DurationMS int `json:"duration_ms" binding:"omitempty,gte=0"`
+		ViewOnce bool `json:"view_once"`
 	}
 	if c.ShouldBindJSON(&input)!=nil || !strings.HasPrefix(input.ObjectKey,"uploads/"+userID+"/") { c.JSON(http.StatusBadRequest,gin.H{"error":"invalid uploaded media"});return }
+	if input.ViewOnce { c.JSON(http.StatusBadRequest,gin.H{"error":"view once media must use secure upload"});return }
 	if !isConversationMember(c,input.ConversationID,userID){c.JSON(http.StatusForbidden,gin.H{"error":"not a conversation member"});return}
+	if !requireConversationSender(c,input.ConversationID,userID){return}
 	var otherID string
 	if db.QueryRow(c.Request.Context(),`SELECT cm.user_id::text FROM conversations c JOIN conversation_members cm ON cm.conversation_id=c.id AND cm.user_id<>$2 WHERE c.id=$1 AND c.kind='direct' LIMIT 1`,input.ConversationID,userID).Scan(&otherID)==nil && usersBlocked(userID,otherID){c.JSON(http.StatusForbidden,gin.H{"error":"media unavailable because communication is blocked"});return}
 	kind:="file";if strings.HasPrefix(input.ContentType,"image/"){kind="image"}else if strings.HasPrefix(input.ContentType,"video/"){kind="video"}else if strings.HasPrefix(input.ContentType,"audio/"){kind="audio"}
@@ -66,21 +69,29 @@ func completeMediaMessage(c *gin.Context) {
 	if err==nil{_,err=tx.Exec(ctx,`UPDATE conversations SET last_message_at=$2,updated_at=NOW() WHERE id=$1`,input.ConversationID,createdAt)}
 	if err==nil{_,err=tx.Exec(ctx,`UPDATE conversation_members SET hidden_at=NULL WHERE conversation_id=$1 AND user_id<>$2`,input.ConversationID,userID)}
 	if err!=nil || tx.Commit(ctx)!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"media message could not be saved"});return}
-	broadcast(input.ConversationID,userID,gin.H{"type":"message","id":messageID,"conversation_id":input.ConversationID,"sender_id":userID,"text":input.FileName,"kind":kind,"attachment":metadata,"status":status,"created_at":createdAt})
+	senderName,senderAvatar:=messageSenderIdentity(c.Request.Context(),input.ConversationID,userID)
+	payload:=gin.H{"type":"message","id":messageID,"conversation_id":input.ConversationID,"sender_id":userID,"sender_name":senderName,"sender_avatar_url":senderAvatar,"text":input.FileName,"kind":kind,"attachment":metadata,"status":status,"created_at":createdAt}
+	broadcast(input.ConversationID,userID,payload)
 	notifyConversation(input.ConversationID,userID,"media","New attachment",input.FileName,map[string]any{"conversation_id":input.ConversationID,"message_id":messageID,"kind":kind})
-	c.JSON(http.StatusCreated,gin.H{"id":messageID,"kind":kind,"attachment":metadata,"status":status,"created_at":createdAt,"mine":true,"text":input.FileName})
+	payload["mine"]=true;c.JSON(http.StatusCreated,payload)
 }
 
 func uploadMediaMessage(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 27*1024*1024)
 	conversationID := strings.TrimSpace(c.PostForm("conversation_id"))
 	durationMS, _ := strconv.Atoi(strings.TrimSpace(c.PostForm("duration_ms")))
+	viewOnceRaw := strings.ToLower(strings.TrimSpace(c.PostForm("view_once")))
+	if viewOnceRaw != "" && viewOnceRaw != "true" && viewOnceRaw != "false" {
+		c.JSON(http.StatusBadRequest, gin.H{"error":"invalid view once option"}); return
+	}
+	viewOnce := viewOnceRaw == "true"
 	if durationMS < 0 { durationMS = 0 }
 	if durationMS > 300000 { durationMS = 300000 }
 	userID := c.GetString("user_id")
 	if conversationID == "" || !isConversationMember(c, conversationID, userID) {
 		c.JSON(http.StatusForbidden, gin.H{"error":"not a conversation member"}); return
 	}
+	if !requireConversationSender(c,conversationID,userID){return}
 	var otherID string
 	if db.QueryRow(c.Request.Context(), `SELECT cm.user_id::text FROM conversations c JOIN conversation_members cm ON cm.conversation_id=c.id AND cm.user_id<>$2 WHERE c.id=$1 AND c.kind='direct' LIMIT 1`, conversationID, userID).Scan(&otherID) == nil && usersBlocked(userID, otherID) {
 		c.JSON(http.StatusForbidden, gin.H{"error":"media unavailable because communication is blocked"}); return
@@ -103,6 +114,9 @@ func uploadMediaMessage(c *gin.Context) {
 	if len(contentType) > 120 { contentType = "application/octet-stream" }
 	kind := "file"
 	if strings.HasPrefix(contentType,"image/") { kind="image" } else if strings.HasPrefix(contentType,"video/") { kind="video" } else if strings.HasPrefix(contentType,"audio/") { kind="audio" }
+	if viewOnce && kind != "image" && kind != "video" {
+		c.JSON(http.StatusBadRequest, gin.H{"error":"view once is available for photos and videos only"}); return
+	}
 
 	ctx := c.Request.Context()
 	tx, err := db.Begin(ctx)
@@ -116,21 +130,41 @@ func uploadMediaMessage(c *gin.Context) {
 	if err == nil { _,err=tx.Exec(ctx, `INSERT INTO media_blobs(media_id,file_data) VALUES($1,$2)`, mediaID, data) }
 	scheme:=c.GetHeader("X-Forwarded-Proto");if scheme==""{scheme="http";if c.Request.TLS!=nil{scheme="https"}}
 	publicURL:=scheme+"://"+c.Request.Host+"/api/v1/media/files/"+mediaID
-	metadata:=gin.H{"file_name":fileName,"content_type":contentType,"size":len(data),"object_key":objectKey,"url":publicURL,"duration_ms":durationMS}
+	metadata:=gin.H{"file_name":fileName,"content_type":contentType,"size":len(data),"duration_ms":durationMS}
+	messageBody:=fileName
+	if viewOnce {
+		metadata["view_once"]=true
+		messageBody="View once photo"
+		if kind=="video" { messageBody="View once video" }
+	} else {
+		metadata["object_key"]=objectKey
+		metadata["url"]=publicURL
+	}
 	metadataJSON,_:=json.Marshal(metadata)
 	status:="sent";if onlineRecipients(conversationID,userID)>0||isConversationPeerOnline(conversationID,userID){status="delivered"}
 	var messageID string;var createdAt time.Time
-	if err==nil{err=tx.QueryRow(ctx,`INSERT INTO messages(conversation_id,sender_id,kind,body,metadata,status) VALUES($1,$2,$3,$4,$5,$6) RETURNING id::text,created_at`,conversationID,userID,kind,fileName,metadataJSON,status).Scan(&messageID,&createdAt)}
+	if err==nil{err=tx.QueryRow(ctx,`INSERT INTO messages(conversation_id,sender_id,kind,body,metadata,status,view_once) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id::text,created_at`,conversationID,userID,kind,messageBody,metadataJSON,status,viewOnce).Scan(&messageID,&createdAt)}
 	if err==nil{_,err=tx.Exec(ctx,`INSERT INTO message_attachments(message_id,media_id) VALUES($1,$2)`,messageID,mediaID)}
 	if err==nil{_,err=tx.Exec(ctx,`UPDATE conversations SET last_message_at=$2,updated_at=NOW() WHERE id=$1`,conversationID,createdAt)}
 	if err==nil{_,err=tx.Exec(ctx,`UPDATE conversation_members SET hidden_at=NULL WHERE conversation_id=$1 AND user_id<>$2`,conversationID,userID)}
 	if err!=nil||tx.Commit(ctx)!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"media message could not be saved"});return}
-	broadcast(conversationID,userID,gin.H{"type":"message","id":messageID,"conversation_id":conversationID,"sender_id":userID,"text":fileName,"kind":kind,"attachment":metadata,"status":status,"created_at":createdAt})
-	notifyConversation(conversationID,userID,"media","New attachment",fileName,map[string]any{"conversation_id":conversationID,"message_id":messageID,"kind":kind})
-	c.JSON(http.StatusCreated,gin.H{"id":messageID,"kind":kind,"attachment":metadata,"status":status,"created_at":createdAt,"mine":true,"text":fileName})
+	senderName,senderAvatar:=messageSenderIdentity(c.Request.Context(),conversationID,userID)
+	if viewOnce {
+		var recipientCount int
+		_ = db.QueryRow(c.Request.Context(),`SELECT COUNT(*)::int FROM conversation_members WHERE conversation_id=$1 AND user_id<>$2`,conversationID,userID).Scan(&recipientCount)
+		metadata=protectViewOnceAttachment(metadata,false,false,0,recipientCount)
+	}
+	payload:=gin.H{"type":"message","id":messageID,"conversation_id":conversationID,"sender_id":userID,"sender_name":senderName,"sender_avatar_url":senderAvatar,"text":messageBody,"kind":kind,"attachment":metadata,"status":status,"created_at":createdAt}
+	broadcast(conversationID,userID,payload)
+	if viewOnce { notifyConversation(conversationID,userID,"media","View once media",messageBody,map[string]any{"conversation_id":conversationID,"message_id":messageID,"kind":kind,"view_once":true})
+	} else { notifyConversation(conversationID,userID,"media","New attachment",fileName,map[string]any{"conversation_id":conversationID,"message_id":messageID,"kind":kind}) }
+	payload["mine"]=true;c.JSON(http.StatusCreated,payload)
 }
 
 func getStoredMedia(c *gin.Context) {
+	var viewOnce bool
+	_ = db.QueryRow(c.Request.Context(),`SELECT EXISTS(SELECT 1 FROM message_attachments attachment JOIN messages message ON message.id=attachment.message_id WHERE attachment.media_id=$1 AND message.view_once=TRUE)`,c.Param("mediaId")).Scan(&viewOnce)
+	if viewOnce { c.Status(http.StatusNotFound); return }
 	var contentType,fileName string;var data []byte;var createdAt time.Time
 	err:=db.QueryRow(c.Request.Context(),`SELECT m.content_type,m.file_name,b.file_data,m.created_at FROM media_objects m JOIN media_blobs b ON b.media_id=m.id WHERE m.id=$1`,c.Param("mediaId")).Scan(&contentType,&fileName,&data,&createdAt)
 	if err!=nil{c.Status(http.StatusNotFound);return}
@@ -214,6 +248,43 @@ func uploadAvatar(c *gin.Context){
 func getAvatar(c *gin.Context){
 	var contentType string;var data []byte
 	if db.QueryRow(c.Request.Context(),`SELECT content_type,image_data FROM user_avatars WHERE user_id=$1`,c.Param("userId")).Scan(&contentType,&data)!=nil{c.Status(http.StatusNotFound);return}
+	c.Header("Cache-Control","public, max-age=86400");c.Data(http.StatusOK,contentType,data)
+}
+
+func uploadGroupAvatar(c *gin.Context){
+	groupID,userID:=c.Param("id"),c.GetString("user_id")
+	access,accessErr:=loadGroupManagementAccess(c.Request.Context(),db,groupID,userID);if accessErr!=nil||!groupCanEditInfo(access.role,access.membersCanEditInfo){c.JSON(http.StatusForbidden,gin.H{"error":"group info editing is restricted to admins"});return}
+	c.Request.Body=http.MaxBytesReader(c.Writer,c.Request.Body,6*1024*1024)
+	fileHeader,err:=c.FormFile("photo");if err!=nil||fileHeader.Size<=0||fileHeader.Size>5*1024*1024{c.JSON(http.StatusBadRequest,gin.H{"error":"group photo must be smaller than 5 MB"});return}
+	file,err:=fileHeader.Open();if err!=nil{c.JSON(http.StatusBadRequest,gin.H{"error":"group photo could not be read"});return};defer file.Close()
+	data,err:=io.ReadAll(io.LimitReader(file,5*1024*1024+1));if err!=nil||len(data)==0||len(data)>5*1024*1024{c.JSON(http.StatusBadRequest,gin.H{"error":"group photo must be smaller than 5 MB"});return}
+	contentType:=http.DetectContentType(data);if contentType!="image/jpeg"&&contentType!="image/png"&&contentType!="image/webp"{c.JSON(http.StatusBadRequest,gin.H{"error":"group photo must be JPG, PNG or WebP"});return}
+	scheme:=c.GetHeader("X-Forwarded-Proto");if scheme==""{scheme="http";if c.Request.TLS!=nil{scheme="https"}}
+	avatarURL:=scheme+"://"+c.Request.Host+"/api/v1/group-avatars/"+groupID+"?v="+strconv.FormatInt(time.Now().Unix(),10)
+	tx,err:=db.Begin(c.Request.Context());if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"group photo could not be saved"});return};defer tx.Rollback(c.Request.Context())
+	access,accessErr=loadGroupManagementAccess(c.Request.Context(),tx,groupID,userID);if accessErr!=nil||!groupCanEditInfo(access.role,access.membersCanEditInfo){c.JSON(http.StatusForbidden,gin.H{"error":"group info editing is restricted to admins"});return}
+	_,err=tx.Exec(c.Request.Context(),`INSERT INTO group_avatars(conversation_id,content_type,image_data) VALUES($1,$2,$3) ON CONFLICT(conversation_id) DO UPDATE SET content_type=EXCLUDED.content_type,image_data=EXCLUDED.image_data,updated_at=NOW()`,groupID,contentType,data)
+	if err==nil{_,err=tx.Exec(c.Request.Context(),`UPDATE conversations SET avatar_url=$2 WHERE id=$1 AND kind='group'`,groupID,avatarURL)}
+	var activity groupActivityMessage
+	if err==nil{var actorName string;actorName,err=groupActivityUserName(c.Request.Context(),tx,groupID,userID);if err==nil{activity,err=recordGroupActivity(c.Request.Context(),tx,groupID,"group_photo_updated",userID,"",groupActivityText("group_photo_updated",actorName,"",""))}}
+	if err!=nil||tx.Commit(c.Request.Context())!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"group photo could not be saved"});return}
+	publishGroupActivity(&activity);broadcast(groupID,userID,gin.H{"type":"group_settings_update","conversation_id":groupID,"avatar_url":avatarURL});broadcastConversationUpdate(groupID,"group_photo_updated")
+	c.JSON(http.StatusOK,gin.H{"avatar_url":avatarURL})
+}
+
+func removeGroupAvatar(c *gin.Context){
+	groupID,userID:=c.Param("id"),c.GetString("user_id");access,accessErr:=loadGroupManagementAccess(c.Request.Context(),db,groupID,userID);if accessErr!=nil||!groupCanEditInfo(access.role,access.membersCanEditInfo){c.JSON(http.StatusForbidden,gin.H{"error":"group info editing is restricted to admins"});return}
+	tx,err:=db.Begin(c.Request.Context());if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"group photo could not be removed"});return};defer tx.Rollback(c.Request.Context())
+	access,accessErr=loadGroupManagementAccess(c.Request.Context(),tx,groupID,userID);if accessErr!=nil||!groupCanEditInfo(access.role,access.membersCanEditInfo){c.JSON(http.StatusForbidden,gin.H{"error":"group info editing is restricted to admins"});return}
+	_,err=tx.Exec(c.Request.Context(),`DELETE FROM group_avatars WHERE conversation_id=$1`,groupID);if err==nil{_,err=tx.Exec(c.Request.Context(),`UPDATE conversations SET avatar_url=NULL WHERE id=$1 AND kind='group'`,groupID)}
+	var activity groupActivityMessage
+	if err==nil{var actorName string;actorName,err=groupActivityUserName(c.Request.Context(),tx,groupID,userID);if err==nil{activity,err=recordGroupActivity(c.Request.Context(),tx,groupID,"group_photo_removed",userID,"",groupActivityText("group_photo_removed",actorName,"",""))}}
+	if err!=nil||tx.Commit(c.Request.Context())!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"group photo could not be removed"});return};publishGroupActivity(&activity);broadcast(groupID,userID,gin.H{"type":"group_settings_update","conversation_id":groupID,"avatar_url":nil});broadcastConversationUpdate(groupID,"group_photo_removed");c.Status(http.StatusNoContent)
+}
+
+func getGroupAvatar(c *gin.Context){
+	var contentType string;var data []byte
+	if db.QueryRow(c.Request.Context(),`SELECT content_type,image_data FROM group_avatars WHERE conversation_id=$1`,c.Param("groupId")).Scan(&contentType,&data)!=nil{c.Status(http.StatusNotFound);return}
 	c.Header("Cache-Control","public, max-age=86400");c.Data(http.StatusOK,contentType,data)
 }
 

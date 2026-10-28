@@ -15,10 +15,12 @@ class CallState {
 }
 
 class CallHistoryItem {
-  const CallHistoryItem({required this.id,required this.conversationId,required this.title,required this.kind,required this.status,required this.startedAt,required this.avatarUrl});
-  factory CallHistoryItem.fromJson(Map<String,dynamic> json)=>CallHistoryItem(id:json['id'] as String,conversationId:json['conversation_id'] as String,title:json['title'] as String? ?? 'GroopX call',kind:json['kind'] as String? ?? 'audio',status:json['status'] as String? ?? 'ended',startedAt:DateTime.parse(json['started_at'] as String).toLocal(),avatarUrl:json['avatar_url'] as String? ?? '');
+  const CallHistoryItem({required this.id,required this.conversationId,required this.title,required this.kind,required this.status,required this.startedAt,required this.avatarUrl,required this.outgoing,required this.durationSeconds,required this.participantCount});
+  factory CallHistoryItem.fromJson(Map<String,dynamic> json)=>CallHistoryItem(id:json['id'] as String,conversationId:json['conversation_id'] as String? ?? '',title:json['title'] as String? ?? 'GroopX call',kind:json['kind'] as String? ?? 'audio',status:json['status'] as String? ?? 'ended',startedAt:DateTime.parse(json['started_at'] as String).toLocal(),avatarUrl:json['avatar_url'] as String? ?? '',outgoing:json['outgoing'] as bool? ?? false,durationSeconds:(json['duration_seconds'] as num?)?.toInt()??0,participantCount:(json['participant_count'] as num?)?.toInt()??2);
   final String id,conversationId,title,kind,status,avatarUrl;
   final DateTime startedAt;
+  final bool outgoing;
+  final int durationSeconds,participantCount;
 }
 
 class CallApi {
@@ -42,8 +44,8 @@ class CallApi {
   static final instance = CallApi._();
   final Dio _dio = Dio(BaseOptions(baseUrl: const String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:8080/api/v1'), connectTimeout: const Duration(seconds: 15), receiveTimeout: const Duration(seconds: 15)));
 
-  Future<CallSession> start({required String conversationId, required bool video}) async {
-    final response = await _dio.post<Map<String, dynamic>>('/calls/token', data: {'conversation_id':conversationId,'kind':video ? 'video' : 'audio'});
+  Future<CallSession> start({required String conversationId, required bool video, String reminderId = ''}) async {
+    final response = await _dio.post<Map<String, dynamic>>('/calls/token', data: {'conversation_id':conversationId,'kind':video ? 'video' : 'audio',if(reminderId.isNotEmpty)'reminder_id':reminderId});
     return CallSession.fromJson(response.data!);
   }
   Future<CallSession> join(String callId) async {

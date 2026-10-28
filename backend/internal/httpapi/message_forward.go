@@ -36,16 +36,40 @@ func forwardMessage(c *gin.Context) {
 
 	ctx := c.Request.Context()
 	var sourceConversationID, body, kind string
+	var viewOnce bool
 	var rawMetadata []byte
-	if db.QueryRow(ctx, `SELECT m.conversation_id::text,m.body,m.kind::text,m.metadata
+	if db.QueryRow(ctx, `SELECT m.conversation_id::text,m.body,m.kind::text,m.metadata,m.view_once
 		FROM messages m JOIN conversation_members cm ON cm.conversation_id=m.conversation_id AND cm.user_id=$2
-		WHERE m.id=$1 AND m.deleted_at IS NULL`, c.Param("id"), userID).Scan(&sourceConversationID, &body, &kind, &rawMetadata) != nil {
+		WHERE m.id=$1 AND m.deleted_at IS NULL`, c.Param("id"), userID).Scan(&sourceConversationID, &body, &kind, &rawMetadata, &viewOnce) != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "message not found"})
+		return
+	}
+	if kind == "system" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "group activity messages cannot be forwarded"})
+		return
+	}
+	if kind == "poll" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "poll messages cannot be forwarded"})
+		return
+	}
+	if viewOnce {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "view once media cannot be forwarded"})
 		return
 	}
 
 	metadata := map[string]any{}
 	_ = json.Unmarshal(rawMetadata, &metadata)
+	delete(metadata, "status_reply")
+	if kind == "location" && metadata["live"] == true {
+		body = "Shared location"
+		metadata["label"] = body
+		metadata["live"] = false
+		metadata["active"] = false
+		delete(metadata, "live_location_id")
+		delete(metadata, "started_at")
+		delete(metadata, "expires_at")
+		delete(metadata, "stopped_at")
+	}
 	metadata["forwarded"] = true
 	forwardMetadata, _ := json.Marshal(metadata)
 
@@ -61,6 +85,11 @@ func forwardMessage(c *gin.Context) {
 		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM conversation_members WHERE conversation_id=$1 AND user_id=$2)`, conversationID, userID).Scan(&allowed)
 		if err != nil || !allowed {
 			c.JSON(http.StatusForbidden, gin.H{"error": "one selected conversation is unavailable"})
+			return
+		}
+		allowed, err = conversationAllowsSender(ctx, tx, conversationID, userID)
+		if err != nil || !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": announcementOnlyMessage})
 			return
 		}
 		var otherID string
@@ -95,7 +124,8 @@ func forwardMessage(c *gin.Context) {
 	}
 
 	for _, item := range created {
-		payload := gin.H{"type": "message", "id": item.ID, "conversation_id": item.ConversationID, "sender_id": userID, "text": item.Body, "kind": item.Kind, "status": item.Status, "created_at": item.CreatedAt, "forwarded": true}
+		senderName,senderAvatar:=messageSenderIdentity(ctx,item.ConversationID,userID)
+		payload := gin.H{"type": "message", "id": item.ID, "conversation_id": item.ConversationID, "sender_id": userID,"sender_name":senderName,"sender_avatar_url":senderAvatar, "text": item.Body, "kind": item.Kind, "status": item.Status, "created_at": item.CreatedAt, "forwarded": true}
 		if item.Kind != "text" {
 			payload["attachment"] = item.Metadata
 		}

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../auth/presentation/auth_components.dart';
 import '../../contacts/data/social_api.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/groopx_ui.dart';
+import 'group_member_picker.dart';
+import 'group_member_name_dialog.dart';
 
 class GroupInfoScreen extends StatefulWidget {
   const GroupInfoScreen({super.key, required this.groupId});
@@ -30,16 +31,18 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   @override
   Widget build(BuildContext context) {
     final value = group;
-    final amAdmin = value?.members.any((member) => member.mine && member.role == 'admin') ?? false;
+    final amAdmin = value?.admin == true || (value?.members.any((member) => member.mine && member.role == 'admin') ?? false);
+    final canEditInfo = amAdmin || value?.canEditInfo == true;
+    final canAddMembers = amAdmin || value?.canAddMembers == true;
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Group Info', style: TextStyle(fontWeight: FontWeight.w700)),actions:[if(amAdmin)IconButton(tooltip:'Edit group',onPressed:()async{final changed=await context.push<bool>('/groups/${widget.groupId}/edit');if(changed==true)_load();},icon:const Icon(Icons.edit_outlined))]),
+      appBar: AppBar(title: const Text('Group Info', style: TextStyle(fontWeight: FontWeight.w700)),actions:[if(canEditInfo)IconButton(tooltip:'Edit group',onPressed:()async{final changed=await context.push<bool>('/groups/${widget.groupId}/edit');if(changed==true)_load();},icon:const Icon(Icons.edit_outlined))]),
       body: GroopXBackground(child:value == null
           ? (error == null ? const Center(child:CircularProgressIndicator(color: authPurple)) : GroopXEmptyState(icon:Icons.cloud_off_outlined,title:'Unable to load',message:error!,actionLabel:'Retry',actionIcon:Icons.refresh,onAction:_load))
           : RefreshIndicator(onRefresh:_load,child:ListView(padding: const EdgeInsets.all(16), children: [
               Card(child:Padding(padding:const EdgeInsets.all(18),child:
               Row(children: [
-                const CircleAvatar(radius: 28, backgroundColor: authPurple, child: Icon(Icons.groups, color: Colors.white, size: 31)),
+                CircleAvatar(radius:28,backgroundColor:authPurple,foregroundImage:value.avatarUrl.isEmpty?null:NetworkImage(value.avatarUrl),child:value.avatarUrl.isEmpty?const Icon(Icons.groups,color:Colors.white,size:31):null),
                 const SizedBox(width: 15),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(value.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: authInk)),
@@ -53,28 +56,71 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 _Action(Icons.videocam, 'Video Call', () => context.push('/call/video/${widget.groupId}')),
                 _Action(Icons.chat_bubble_outline, 'Open Chat', () => context.go('/chat/${widget.groupId}')),
               ]),
+              if (value.announcementOnly) ...[
+                const SizedBox(height: 12),
+                const Card(child:ListTile(
+                  leading: CircleAvatar(backgroundColor:Color(0xFFEEE9FF),child:Icon(Icons.campaign_outlined,color:authPurple)),
+                  title: Text('Announcement mode',style:TextStyle(fontWeight:FontWeight.w700)),
+                  subtitle: Text('Only admins can send messages. Members can read, react and vote.'),
+                )),
+              ],
+              if (value.joinApprovalRequired) ...[
+                const SizedBox(height: 12),
+                const Card(child:ListTile(
+                  leading: CircleAvatar(backgroundColor:Color(0xFFEEE9FF),child:Icon(Icons.how_to_reg_outlined,color:authPurple)),
+                  title: Text('New members need approval',style:TextStyle(fontWeight:FontWeight.w700)),
+                  subtitle: Text('Invite link se aane wale members ko admin approve karega.'),
+                )),
+              ],
+              const SizedBox(height: 12),
+              Card(child:ListTile(
+                leading: const CircleAvatar(backgroundColor:Color(0xFFEEE9FF),child:Icon(Icons.admin_panel_settings_outlined,color:authPurple)),
+                title: const Text('Group permissions',style:TextStyle(fontWeight:FontWeight.w700)),
+                subtitle: Text('${value.announcementOnly ? 'Only admins' : 'All members'} can send messages\n${value.membersCanEditInfo ? 'Members' : 'Only admins'} can edit group info\n${value.membersCanAddMembers ? 'Members' : 'Only admins'} can add participants'),
+              )),
+              if (amAdmin && (value.joinApprovalRequired || value.pendingJoinRequests > 0)) ...[
+                const SizedBox(height: 12),
+                Card(child:ListTile(
+                  leading: const Icon(Icons.pending_actions_outlined,color:authPurple),
+                  title: const Text('Join requests',style:TextStyle(fontWeight:FontWeight.w700)),
+                  subtitle: Text(value.pendingJoinRequests == 0 ? 'No pending requests' : '${value.pendingJoinRequests} waiting for approval'),
+                  trailing: Row(mainAxisSize:MainAxisSize.min,children:[
+                    if(value.pendingJoinRequests>0)Container(padding:const EdgeInsets.symmetric(horizontal:8,vertical:4),decoration:BoxDecoration(color:authPurple,borderRadius:BorderRadius.circular(12)),child:Text('${value.pendingJoinRequests}',style:const TextStyle(color:Colors.white,fontSize:11,fontWeight:FontWeight.w700))),
+                    const SizedBox(width:4),
+                    const Icon(Icons.chevron_right),
+                  ]),
+                  onTap:()async{await context.push('/groups/${widget.groupId}/join-requests');if(mounted)_load();},
+                )),
+              ],
               const SizedBox(height:12),
               Card(child:ListTile(leading:const Icon(Icons.perm_media_outlined,color:authPurple),title:const Text('Media, links & documents',style:TextStyle(fontWeight:FontWeight.w600)),trailing:const Icon(Icons.chevron_right),onTap:()=>context.push('/chat/${widget.groupId}/media'))),
               if (amAdmin) ...[
                 const SizedBox(height: 12),
-                OutlinedButton.icon(onPressed: _createInvite, icon: const Icon(Icons.link, color: authPurple), label: const Text('Create Invite Link')),
+                Card(child:ListTile(
+                  leading: const Icon(Icons.link,color:authPurple),
+                  title: const Text('Invite links',style:TextStyle(fontWeight:FontWeight.w700)),
+                  subtitle: const Text('Create, view usage, reset or revoke'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap:()=>context.push('/groups/${widget.groupId}/invites'),
+                )),
               ],
               const Divider(height: 32),
               Row(children: [
-                const Text('Members', style: TextStyle(fontWeight: FontWeight.w700)),
+                Text('Members (${value.members.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
                 const Spacer(),
-                if (amAdmin) TextButton.icon(onPressed: _addMember, icon: const Icon(Icons.person_add_alt, size: 18), label: const Text('Add')),
-                Text('${value.members.length}', style: const TextStyle(color: authMuted)),
+                TextButton(onPressed:()async{await context.push('/groups/${widget.groupId}/members');if(mounted)_load();},child:const Text('View all')),
+                if (canAddMembers) IconButton(tooltip:'Add member',onPressed: _addMember, icon: const Icon(Icons.person_add_alt, size: 20)),
               ]),
               ...value.members.map((member) => Card(margin:const EdgeInsets.only(bottom:7),child:ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal:12,vertical:4),
-                leading: GroopXAvatar(label:member.name),
+                leading: GroopXAvatar(label:member.name,imageUrl:member.avatarUrl),
                 title: Text(member.mine ? '${member.name} (You)' : member.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: Text(member.username.isEmpty ? '' : '@${member.username}'),
-                trailing: amAdmin && !member.mine
+                subtitle: Text(groupMemberSubtitle(member)),
+                trailing: amAdmin
                     ? PopupMenuButton<String>(onSelected: (action) => _memberAction(member, action), itemBuilder: (_) => [
-                        PopupMenuItem(value: 'role', child: ListTile(leading: Icon(member.role == 'admin' ? Icons.person_outline : Icons.admin_panel_settings_outlined), title: Text(member.role == 'admin' ? 'Remove admin' : 'Make group admin'))),
-                        const PopupMenuItem(value: 'remove', child: ListTile(leading: Icon(Icons.person_remove_outlined, color: Colors.red), title: Text('Remove member', style: TextStyle(color: Colors.red)))),
+                        const PopupMenuItem(value: 'name', child: ListTile(leading: Icon(Icons.badge_outlined), title: Text('Edit member name'))),
+                        if (!member.mine) PopupMenuItem(value: 'role', child: ListTile(leading: Icon(member.role == 'admin' ? Icons.person_outline : Icons.admin_panel_settings_outlined), title: Text(member.role == 'admin' ? 'Remove admin' : 'Make group admin'))),
+                        if (!member.mine) const PopupMenuItem(value: 'remove', child: ListTile(leading: Icon(Icons.person_remove_outlined, color: Colors.red), title: Text('Remove member', style: TextStyle(color: Colors.red)))),
                       ])
                     : Text(member.role == 'admin' ? 'Admin' : 'Member', style: TextStyle(fontSize: 11, color: member.role == 'admin' ? authPurple : authMuted)),
               ))),
@@ -99,7 +145,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   }
 
   Future<void> _addMember() async {
-    final selected=await showModalBottomSheet<UserOption>(context:context,isScrollControlled:true,builder:(_)=>const _MemberPickerSheet());
+    final selected=await showGroupMemberPicker(context,excludedIds:group?.members.map((member)=>member.id).toSet()??const <String>{});
     if(selected==null)return;
     try {
       await SocialApi.instance.addGroupMembers(widget.groupId, [selected.id]);
@@ -111,6 +157,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   }
 
   Future<void> _removeMember(GroupMember member) async {
+    final confirmed=await showDialog<bool>(context:context,builder:(dialogContext)=>AlertDialog(title:const Text('Remove member?'),content:Text('${member.name} ko group se remove karna hai?'),actions:[TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('Cancel')),TextButton(onPressed:()=>Navigator.pop(dialogContext,true),child:const Text('Remove',style:TextStyle(color:Colors.red)))]));
+    if(confirmed!=true||!mounted)return;
     try {
       await SocialApi.instance.removeGroupMember(widget.groupId, member.id);
       await _load();
@@ -120,6 +168,18 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   }
 
   Future<void> _memberAction(GroupMember member, String action) async {
+    if (action == 'name') {
+      final displayName = await showGroupMemberNameEditor(context, member);
+      if (displayName == null || !mounted) return;
+      try {
+        await SocialApi.instance.updateGroupMemberDisplayName(widget.groupId, member.id, displayName);
+        await _load();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(displayName.isEmpty ? 'Member name reset ho gaya.' : '${member.profileName} ka group name update ho gaya.')));
+      } catch (_) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Group display name update nahi hua. Retry karein.')));
+      }
+      return;
+    }
     if (action == 'remove') return _removeMember(member);
     try {
       await SocialApi.instance.updateGroupMemberRole(widget.groupId, member.id, member.role == 'admin' ? 'member' : 'admin');
@@ -130,27 +190,6 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     }
   }
 
-  Future<void> _createInvite() async {
-    try {
-      final link = await SocialApi.instance.createGroupInvite(widget.groupId);
-      await Clipboard.setData(ClipboardData(text: link));
-      if (!mounted) return;
-      await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
-        title: const Text('Invite link created'),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Link clipboard mein copy ho gaya. Yeh 24 hours tak valid hai.'), const SizedBox(height: 12), SelectableText(link, style: const TextStyle(color: authPurple))]),
-        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Done'))],
-      ));
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invite link create nahi hua')));
-    }
-  }
-}
-
-class _MemberPickerSheet extends StatefulWidget{const _MemberPickerSheet();@override State<_MemberPickerSheet> createState()=>_MemberPickerSheetState();}
-class _MemberPickerSheetState extends State<_MemberPickerSheet>{final search=TextEditingController();List<UserOption> results=const[];bool loading=false;String? error;
-  @override void dispose(){search.dispose();super.dispose();}
-  Future<void> _find()async{final query=search.text.trim();if(query.length<2){setState(()=>error='Minimum 2 characters type karein.');return;}setState((){loading=true;error=null;});try{final users=await SocialApi.instance.searchUsers(query);if(mounted)setState(()=>results=users);}catch(_){if(mounted)setState(()=>error='Users search nahi hue.');}finally{if(mounted)setState(()=>loading=false);}}
-  @override Widget build(BuildContext context)=>Padding(padding:EdgeInsets.fromLTRB(18,18,18,MediaQuery.viewInsetsOf(context).bottom+24),child:Column(mainAxisSize:MainAxisSize.min,children:[const Text('Add Group Member',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800,color:AppColors.text)),const SizedBox(height:16),TextField(controller:search,autofocus:true,textInputAction:TextInputAction.search,onSubmitted:(_)=>_find(),decoration:InputDecoration(labelText:'Name, username or phone',prefixIcon:const Icon(Icons.search),suffixIcon:IconButton(onPressed:_find,icon:const Icon(Icons.arrow_forward)))),if(loading)const LinearProgressIndicator(),if(error!=null)Padding(padding:const EdgeInsets.only(top:12),child:Text(error!,style:const TextStyle(color:Colors.red))),if(!loading&&results.isEmpty&&error==null)const Padding(padding:EdgeInsets.symmetric(vertical:22),child:Text('Search karke exact member select karein.',style:TextStyle(color:AppColors.muted))),if(results.isNotEmpty)Flexible(child:ListView.separated(shrinkWrap:true,padding:const EdgeInsets.only(top:12),itemCount:results.length,separatorBuilder:(_,__)=>const Divider(height:1),itemBuilder:(_,index){final user=results[index];return ListTile(leading:GroopXAvatar(label:user.name),title:Text(user.name,style:const TextStyle(fontWeight:FontWeight.w700)),subtitle:Text(user.username.isEmpty?'GroopX user':'@${user.username}'),trailing:const Icon(Icons.add_circle_outline,color:AppColors.purple),onTap:()=>Navigator.pop(context,user));}))]));
 }
 
 class _Action extends StatelessWidget {

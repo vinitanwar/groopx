@@ -16,6 +16,10 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   final name = TextEditingController();
   final description = TextEditingController();
   bool private = true;
+  bool announcementOnly = false;
+  bool joinApprovalRequired = false;
+  bool membersCanEditInfo = false;
+  bool membersCanAddMembers = false;
   final selected = <String>{};
   List<UserOption> members = const [];
   Timer? debounce;
@@ -41,6 +45,46 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       _PrivacyTile(title: 'Private Group', subtitle: 'Only invited members can join and see the group.', icon: Icons.lock, selected: private, onTap: () => setState(() => private = true)),
       const SizedBox(height: 6),
       _PrivacyTile(title: 'Public Group', subtitle: 'Anyone can find the group and join.', icon: Icons.public, selected: !private, onTap: () => setState(() => private = false)),
+      const Divider(height: 24),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: announcementOnly,
+        activeColor: authPurple,
+        secondary: const CircleAvatar(backgroundColor: Color(0xFFF2EDFF), child: Icon(Icons.campaign_outlined, color: authPurple)),
+        title: const Text('Announcement mode', style: TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: const Text('Only admins can send messages. Members can read, react and vote.', style: TextStyle(fontSize: 10, color: authMuted)),
+        onChanged: (value) => setState(() => announcementOnly = value),
+      ),
+      const Divider(height: 8),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: joinApprovalRequired,
+        activeColor: authPurple,
+        secondary: const CircleAvatar(backgroundColor: Color(0xFFF2EDFF), child: Icon(Icons.how_to_reg_outlined, color: authPurple)),
+        title: const Text('Approve new members', style: TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: const Text('Invite link requests need an admin approval before joining.', style: TextStyle(fontSize: 10, color: authMuted)),
+        onChanged: (value) => setState(() => joinApprovalRequired = value),
+      ),
+      const Divider(height: 8),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: membersCanEditInfo,
+        activeColor: authPurple,
+        secondary: const CircleAvatar(backgroundColor: Color(0xFFF2EDFF), child: Icon(Icons.edit_outlined, color: authPurple)),
+        title: const Text('Members can edit group info', style: TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: const Text('Allow members to change the group name, description and photo.', style: TextStyle(fontSize: 10, color: authMuted)),
+        onChanged: (value) => setState(() => membersCanEditInfo = value),
+      ),
+      const Divider(height: 8),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: membersCanAddMembers,
+        activeColor: authPurple,
+        secondary: const CircleAvatar(backgroundColor: Color(0xFFF2EDFF), child: Icon(Icons.person_add_alt_1_outlined, color: authPurple)),
+        title: const Text('Members can add participants', style: TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: const Text('Allow members to add GroopX users directly.', style: TextStyle(fontSize: 10, color: authMuted)),
+        onChanged: (value) => setState(() => membersCanAddMembers = value),
+      ),
       ]))),
       const SizedBox(height: 14),
       Row(children: [const Text('Add Members', style: TextStyle(fontWeight: FontWeight.w700, color: authInk)), const Spacer(), Text('${selected.length} Selected', style: const TextStyle(fontSize: 11, color: authPurple))]),
@@ -87,7 +131,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     }
     setState(() => loading = true);
     try {
-      final id = await SocialApi.instance.createGroup(name: name.text.trim(), description: description.text.trim(), privacy: private ? 'private' : 'public', memberIds: selected.toList());
+      final id = await SocialApi.instance.createGroup(name: name.text.trim(), description: description.text.trim(), privacy: private ? 'private' : 'public', memberIds: selected.toList(), announcementOnly: announcementOnly, joinApprovalRequired: joinApprovalRequired, membersCanEditInfo: membersCanEditInfo, membersCanAddMembers: membersCanAddMembers);
       if (mounted) context.go('/groups/$id');
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Group could not be created')));

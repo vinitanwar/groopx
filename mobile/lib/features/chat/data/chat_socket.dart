@@ -23,7 +23,7 @@ class ChatSocket {
     return json;
   });
 
-  void send(String text, {String? replyToId}) => _channel.sink.add(jsonEncode({'type': 'message', 'text': text, if (replyToId != null) 'reply_to_id': replyToId}));
+  void send(String text, {String? replyToId, List<String> mentionUserIds = const []}) => _channel.sink.add(jsonEncode({'type': 'message', 'text': text, if (replyToId != null) 'reply_to_id': replyToId, if (mentionUserIds.isNotEmpty) 'mention_user_ids': mentionUserIds}));
   void sendTyping(bool typing) => _channel.sink.add(jsonEncode({'type': 'typing', 'typing': typing}));
   Future<void> close() => _channel.sink.close();
 }

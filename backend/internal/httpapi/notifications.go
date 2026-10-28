@@ -28,6 +28,7 @@ func unregisterDevice(c *gin.Context) {
 }
 
 func listNotifications(c *gin.Context) {
+	expireRingingCalls(c.Request.Context(),"","")
 	rows,err:=db.Query(c.Request.Context(),`SELECT id::text,type,title,body,data,read_at,created_at FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`,c.GetString("user_id"))
 	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"error":"notifications could not be loaded"});return};defer rows.Close()
 	items:=make([]gin.H,0);unread:=0
@@ -59,3 +60,27 @@ func clearReadNotifications(c *gin.Context) {
 }
 
 func notifyConversation(conversationID,senderID,kind,title,body string,data map[string]any){payload,_:=json.Marshal(data);_,_=db.Exec(context.Background(),`INSERT INTO notifications(user_id,type,title,body,data) SELECT user_id,$3,$4,$5,$6 FROM conversation_members WHERE conversation_id=$1 AND user_id<>$2 AND hidden_at IS NULL`,conversationID,senderID,kind,title,body,payload);go sendConversationPush(conversationID,senderID,kind,title,body,data)}
+
+func notifyMessageConversation(conversationID, senderID, body string, data map[string]any, mentionUserIDs []string) {
+	if len(mentionUserIDs) == 0 {
+		notifyConversation(conversationID, senderID, "message", "New message", body, data)
+		return
+	}
+	regularData := make(map[string]any, len(data))
+	mentionedData := make(map[string]any, len(data)+1)
+	for key, value := range data {
+		regularData[key] = value
+		mentionedData[key] = value
+	}
+	mentionedData["mentioned"] = true
+	regularPayload, _ := json.Marshal(regularData)
+	mentionedPayload, _ := json.Marshal(mentionedData)
+	ctx := context.Background()
+	_, _ = db.Exec(ctx, `INSERT INTO notifications(user_id,type,title,body,data)
+		SELECT user_id,'message','New message',$3,$4 FROM conversation_members
+		WHERE conversation_id=$1 AND user_id<>$2 AND hidden_at IS NULL AND NOT(user_id::text=ANY($5::text[]))`, conversationID, senderID, body, regularPayload, mentionUserIDs)
+	_, _ = db.Exec(ctx, `INSERT INTO notifications(user_id,type,title,body,data)
+		SELECT user_id,'mention','You were mentioned',$3,$4 FROM conversation_members
+		WHERE conversation_id=$1 AND user_id<>$2 AND hidden_at IS NULL AND user_id::text=ANY($5::text[])`, conversationID, senderID, body, mentionedPayload, mentionUserIDs)
+	go sendConversationMentionPush(conversationID, senderID, body, regularData, mentionedData, mentionUserIDs)
+}

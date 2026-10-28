@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../auth/presentation/auth_components.dart';
+import '../../calls/data/call_api.dart';
 import '../data/notification_api.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/groopx_ui.dart';
@@ -35,12 +36,34 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       try{await NotificationApi.instance.markRead(item.id);}catch(_){await _load();return;}
     }
     final conversationID = item.data['conversation_id'] as String?;
+    final groupID = item.data['group_id']?.toString();
+    final messageID = item.data['message_id']?.toString();
     final callID = item.data['call_id'] as String?;
     final kind = item.data['kind']?.toString() == 'video' ? 'video' : 'audio';
     if (item.type == 'call' && callID != null && mounted) {
-      await context.push('/calls/$kind/$callID/incoming?caller=${Uri.encodeComponent(item.title)}');
+      try{
+        final call=await CallApi.instance.status(callID);
+        if(!mounted)return;
+        if(call.status=='ringing'){await context.push('/calls/$kind/$callID/incoming?caller=${Uri.encodeComponent(item.data['caller']?.toString()??item.title)}');}
+        else if(call.status=='answered'){await context.push('/calls/${call.kind}/$callID/join');}
+        else{await context.push('/calls');}
+      }catch(_){if(mounted)await context.push('/calls');}
+    } else if ((item.type == 'meeting_invite' || item.type == 'meeting_response' || item.type == 'meeting_update' || item.type == 'meeting_cancelled') && mounted) {
+      await context.push('/reminders');
+    } else if (item.type == 'reminder' && mounted) {
+      if (item.data['item_type']?.toString() == 'meeting' && conversationID?.isNotEmpty == true) {
+        final callKind = item.data['call_kind']?.toString() == 'audio' ? 'audio' : 'video';
+        await context.push('/call/$callKind/$conversationID');
+      } else {
+        await context.push('/reminders');
+      }
+    } else if (item.type == 'group_join_request' && groupID?.isNotEmpty == true && mounted) {
+      await context.push('/groups/$groupID/join-requests');
+    } else if (item.type == 'group_join_approved' && groupID?.isNotEmpty == true && mounted) {
+      await context.push('/groups/$groupID');
     } else if (conversationID != null && mounted) {
-      await context.push('/chat/$conversationID');
+      final target = messageID?.isNotEmpty == true ? '?message=${Uri.encodeQueryComponent(messageID!)}' : '';
+      await context.push('/chat/$conversationID$target');
     } else if (mounted) {
       await context.push('/notifications/detail',extra:item);
     }
@@ -92,6 +115,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     )),
   );
 
-  IconData _icon(String type) => type == 'call' ? Icons.call : type == 'media' ? Icons.attach_file : type == 'announcement' ? Icons.campaign_outlined : Icons.chat_bubble_outline;
+  IconData _icon(String type) => type == 'call' ? Icons.call : type == 'media' ? Icons.attach_file : type == 'mention' ? Icons.alternate_email : type == 'announcement' ? Icons.campaign_outlined : type == 'group_join_request' ? Icons.how_to_reg_outlined : type == 'group_join_approved' ? Icons.group_add_outlined : type == 'group_join_rejected' ? Icons.group_off_outlined : type == 'reminder' ? Icons.alarm_outlined : type == 'meeting_invite' ? Icons.event_available_outlined : type == 'meeting_response' ? Icons.how_to_reg_outlined : type == 'meeting_update' ? Icons.edit_calendar_outlined : type == 'meeting_cancelled' ? Icons.event_busy_outlined : type == 'scheduled_message_failed' ? Icons.schedule_send_outlined : Icons.chat_bubble_outline;
   String _time(DateTime value) => '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')} • ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
 }

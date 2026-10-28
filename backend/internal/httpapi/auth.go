@@ -306,6 +306,7 @@ func updateSettings(c *gin.Context) {
 		call_notifications=COALESCE($6,call_notifications), reminder_notifications=COALESCE($7,reminder_notifications), updated_at=NOW()
 		WHERE id=$1`, c.GetString("user_id"), input.ShowOnlineStatus, input.ReadReceipts, input.PushNotifications, input.MessageNotifications, input.CallNotifications, input.ReminderNotifications)
 	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "settings could not be updated"}); return }
+	if input.ShowOnlineStatus!=nil{if *input.ShowOnlineStatus{broadcastUserPresence(c.GetString("user_id"),isUserOnline(c.GetString("user_id")))}else{broadcastUserPresence(c.GetString("user_id"),false)}}
 	c.JSON(http.StatusOK, gin.H{"message": "settings updated"})
 }
 

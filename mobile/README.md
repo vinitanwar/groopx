@@ -1,6 +1,6 @@
 # GroopX Mobile
 
-Flutter client for private direct messaging, groups, communities, statuses,
+Flutter client for private direct messaging, groups, communities, text/photo/video statuses,
 reminders, notifications, and LiveKit audio/video calls.
 
 ## Requirements

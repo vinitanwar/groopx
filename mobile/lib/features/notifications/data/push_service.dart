@@ -18,7 +18,7 @@ class PushService {
   static StreamSubscription<RemoteMessage>? _openedSubscription;
   static bool _initialized = false;
 
-  static Future<void> initialize({required void Function(Map<String, dynamic>) onOpen, required void Function(String, String, Map<String,dynamic>) onForeground}) async {
+  static Future<void> initialize({required FutureOr<void> Function(Map<String, dynamic>) onOpen, required void Function(String, String, Map<String,dynamic>) onForeground}) async {
     if (_initialized) return;
     try {
       await Firebase.initializeApp();
@@ -31,9 +31,11 @@ class PushService {
       _foregroundSubscription = FirebaseMessaging.onMessage.listen((message) {
         onForeground(message.notification?.title ?? 'GroopX', message.notification?.body ?? 'You have a new update',message.data);
       });
-      _openedSubscription = FirebaseMessaging.onMessageOpenedApp.listen((message) => onOpen(message.data));
+      _openedSubscription = FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        unawaited(Future<void>.sync(() => onOpen(message.data)));
+      });
       final initial = await messaging.getInitialMessage();
-      if (initial != null) onOpen(initial.data);
+      if (initial != null) await onOpen(initial.data);
       _initialized = true;
       await registerCurrentDevice();
     } catch (_) {
@@ -45,6 +47,13 @@ class PushService {
     try {
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null) await NotificationApi.instance.registerDevice(token, _platform);
+    } catch (_) {}
+  }
+
+  static Future<void> unregisterCurrentDevice() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null) await NotificationApi.instance.unregisterDevice(token);
     } catch (_) {}
   }
 
