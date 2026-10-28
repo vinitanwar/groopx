@@ -106,8 +106,8 @@ func createCallToken(c *gin.Context) {
 		}
 		if !errors.Is(err, pgx.ErrNoRows) { c.JSON(http.StatusInternalServerError, gin.H{"error":"meeting call could not be checked"}); return }
 		if !meeting.isOrganizer { c.JSON(http.StatusConflict, gin.H{"error":"The organizer has not started this meeting yet.","code":"meeting_not_started","reminder_id":input.ReminderID}); return }
-		var activeCallID string
-		if db.QueryRow(c.Request.Context(),`SELECT id::text FROM calls WHERE conversation_id=$1 AND status IN ('ringing','answered') AND started_at>NOW()-INTERVAL '2 hours' ORDER BY started_at DESC LIMIT 1`,input.ConversationID).Scan(&activeCallID)==nil{c.JSON(http.StatusConflict,gin.H{"error":"an active call already exists","call_id":activeCallID});return}
+		var conversationCallID string
+		if db.QueryRow(c.Request.Context(),`SELECT id::text FROM calls WHERE conversation_id=$1 AND status IN ('ringing','answered') AND started_at>NOW()-INTERVAL '2 hours' ORDER BY started_at DESC LIMIT 1`,input.ConversationID).Scan(&conversationCallID)==nil{c.JSON(http.StatusConflict,gin.H{"error":"an active call already exists","call_id":conversationCallID});return}
 	} else {
 		var activeCallID string
 		if db.QueryRow(c.Request.Context(),`SELECT id::text FROM calls WHERE conversation_id=$1 AND status IN ('ringing','answered') AND started_at>NOW()-INTERVAL '2 hours' ORDER BY started_at DESC LIMIT 1`,input.ConversationID).Scan(&activeCallID)==nil{c.JSON(http.StatusConflict,gin.H{"error":"an active call already exists","call_id":activeCallID});return}
