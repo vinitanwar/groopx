@@ -93,11 +93,13 @@ class PhoneField extends StatelessWidget {
   Widget build(BuildContext context) => TextField(
         controller: controller,
         keyboardType: TextInputType.phone,
+        autofillHints: const [AutofillHints.telephoneNumber],
         style: const TextStyle(color: authInk, fontSize: 16, fontWeight: FontWeight.w600),
         decoration: InputDecoration(
-          hintText: 'Enter mobile number',
-          prefixIcon: const Padding(padding: EdgeInsets.all(14), child: Text('🇮🇳  +91  ⌄', style: TextStyle(fontSize: 14))),
-          prefixIconConstraints: const BoxConstraints(minWidth: 96),
+          hintText: '+1 202 555 0123',
+          helperText: 'Include country code',
+          prefixIcon: const Icon(Icons.public, color: authPurple),
+          prefixIconConstraints: const BoxConstraints(minWidth: 52),
           enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xFFD6C4FF)), borderRadius: BorderRadius.circular(10)),
           focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: authPurple), borderRadius: BorderRadius.circular(10)),
         ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'auth_components.dart';
 import '../data/auth_api.dart';
+import '../data/phone_number.dart';
 
 enum AuthMode { signIn, signUp }
 
@@ -53,8 +54,8 @@ class _PhoneScreenState extends State<PhoneScreen> {
   }
 
   Future<void> _requestOtp(bool signUp) async {
-    final normalized = '+91${phone.text.replaceAll(RegExp(r'\D'), '')}';
-    if (normalized.length < 13) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid mobile number'))); return; }
+    final normalized = normalizeInternationalPhone(phone.text);
+    if (normalized == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid number with country code, e.g. +91 98765 43210'))); return; }
     setState(() => loading = true);
     try {
       await AuthApi.instance.requestOtp(normalized);
