@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"time"
 )
 
@@ -36,7 +37,10 @@ func Load() Config {
 		JWTSecret: secret,
 		AccessTokenTTL: 15 * time.Minute,
 		RefreshTokenTTL: 30 * 24 * time.Hour,
-		DevelopmentMode: os.Getenv("APP_ENV") != "production",
+		// Keep the fixed development OTP disabled unless development mode is
+		// explicitly requested. A missing or misspelled APP_ENV must never make
+		// a deployed service accept the static OTP.
+		DevelopmentMode: strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "development"),
 		S3Endpoint: os.Getenv("S3_ENDPOINT"),
 		S3Region: envOr("S3_REGION", "auto"),
 		S3Bucket: os.Getenv("S3_BUCKET"),
