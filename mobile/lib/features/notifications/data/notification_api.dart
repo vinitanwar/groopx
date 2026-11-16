@@ -28,7 +28,7 @@ class NotificationApi {
   Future<void> markAllRead()async{await _dio.post('/notifications/read-all');NotificationCenter.instance.setUnread(0);}
   Future<void> delete(String id)=>_dio.delete('/notifications/$id');
   Future<void> clearRead()=>_dio.delete('/notifications/read');
-  Future<void> registerDevice(String token,String platform)=>_dio.post('/devices',data:{'token':token,'platform':platform});
+  Future<void> registerDevice(String token,String platform,{bool notificationReply=false})=>_dio.post('/devices',data:{'token':token,'platform':platform,'notification_reply':notificationReply});
   Future<void> unregisterDevice(String token)=>_dio.delete('/devices',data:{'token':token});
 }
 
